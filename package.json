@@ -26,6 +26,7 @@
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "scripts": {
     "dev": "concurrently -P \"typedoc --watch --preserveWatchOutput\" \"vite --config vite.pages.config.ts {@}\" --",
     "build": "tsc -b && eslint . && vite build && pnpm pack --out pack/%s-%v.tgz",

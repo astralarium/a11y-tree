@@ -15,6 +15,8 @@ Components declare accessible markup wherever they live in the scene graph; it t
 npm i @astralarium/a11y-tree its-fine
 ```
 
+Requires React 19.2 or later.
+
 ## Usage
 
 - [`<A11yTreeProvider>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeProvider.html):
