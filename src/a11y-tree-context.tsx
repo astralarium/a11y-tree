@@ -1,5 +1,12 @@
 import { FiberProvider } from "its-fine";
-import { Component, type ErrorInfo, type ReactNode, useState } from "react";
+import {
+  Component,
+  type CSSProperties,
+  type ErrorInfo,
+  type ReactNode,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import tunnel from "tunnel-rat";
 
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
@@ -38,6 +45,48 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+const errorDialogStyle: CSSProperties = {
+  position: "fixed",
+  top: "1rem",
+  right: "1rem",
+  left: "auto",
+  bottom: "auto",
+  margin: 0,
+  maxWidth: "24rem",
+  padding: "0.75rem 1rem",
+  border: "1px solid #b91c1c",
+  borderRadius: "0.5rem",
+  background: "#fff",
+  color: "#1f2937",
+  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+  zIndex: 2147483647,
+};
+
+function TunnelErrorDialog({
+  error,
+  onDismiss,
+}: {
+  error: Error | null;
+  onDismiss: () => void;
+}) {
+  const content = (
+    <dialog open onClose={onDismiss} style={errorDialogStyle}>
+      <div role="alert" aria-live="assertive">
+        Accessibility tree error: {error?.message ?? "Unknown error"}
+      </div>
+      <button type="button" onClick={onDismiss}>
+        Dismiss
+      </button>
+    </dialog>
+  );
+  // Portal out: the renderer lives inside a canvas fallback / sr-only
+  // container, where in-place content is never painted.
+  if (typeof document === "undefined") {
+    return content;
+  }
+  return createPortal(content, document.body);
+}
+
 class TunnelErrorBoundary extends Component<
   { children: ReactNode },
   ErrorBoundaryState
@@ -50,13 +99,16 @@ class TunnelErrorBoundary extends Component<
     console.error("A11y tunnel error:", error, errorInfo);
     console.error("Component stack:", errorInfo.componentStack);
   }
+  handleDismiss = () => {
+    this.setState({ hasError: false, error: null });
+  };
   render() {
     if (this.state.hasError) {
       return (
-        <div role="alert" aria-live="assertive">
-          Accessibility tree error:{" "}
-          {this.state.error?.message ?? "Unknown error"}
-        </div>
+        <TunnelErrorDialog
+          error={this.state.error}
+          onDismiss={this.handleDismiss}
+        />
       );
     }
     return this.props.children;

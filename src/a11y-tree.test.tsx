@@ -1,8 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { type ReactNode } from "react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { A11yTreeProvider, A11yTreeRenderer } from "./a11y-tree-context";
 import { A11yTreeContainer, A11yTreeElement } from "./a11y-tree-element";
@@ -29,6 +29,46 @@ describe("A11yTreeProvider", () => {
       </TestProvider>,
     );
     expect(screen.getByTestId("child")).toBeInTheDocument();
+  });
+});
+
+describe("TunnelErrorBoundary", () => {
+  test("shows a dismissable non-modal dialog outside the renderer container", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    let shouldThrow = true;
+    function Boom() {
+      if (shouldThrow) {
+        throw new Error("boom");
+      }
+      return <button>Recovered</button>;
+    }
+
+    const { container } = render(
+      <TestProvider>
+        <A11yTreeElement>
+          <Boom />
+        </A11yTreeElement>
+      </TestProvider>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).not.toHaveAttribute("aria-modal", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Accessibility tree error: boom",
+    );
+    // Portaled to document.body, not rendered inside the (hidden) renderer
+    expect(container).not.toContainElement(dialog);
+
+    shouldThrow = false;
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Recovered" }),
+    ).toBeInTheDocument();
+    consoleError.mockRestore();
   });
 });
 

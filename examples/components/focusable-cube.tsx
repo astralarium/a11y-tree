@@ -13,6 +13,7 @@ interface FocusableCubeProps {
  *
  * Hovering focuses its element in the a11y tree;
  * focus (pointer or Tab) highlights the cube.
+ * Clicking the cube or its tree button increments a counter.
  */
 export function FocusableCube({
   label,
@@ -23,6 +24,7 @@ export function FocusableCube({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [clicks, setClicks] = useState(0);
   useEffect(() => {
     if (!hovered) return;
     document.body.style.cursor = "pointer";
@@ -45,6 +47,7 @@ export function FocusableCube({
           setHovered(false);
           buttonRef.current?.blur();
         }}
+        onClick={() => buttonRef.current?.click()}
       >
         <boxGeometry args={[size, size, size]} />
         <meshStandardMaterial
@@ -56,9 +59,11 @@ export function FocusableCube({
           ref={buttonRef}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onClick={() => setClicks((count) => count + 1)}
           className="focus:border-a11y-green w-full rounded border px-3 py-1 focus:text-emerald-300 focus:outline-none"
         >
           {label}
+          {clicks > 0 && ` (clicked ${clicks})`}
         </button>
       </A11yTreeElement>
     </>
