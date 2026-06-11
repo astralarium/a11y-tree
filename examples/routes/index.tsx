@@ -3,7 +3,8 @@ import { Canvas } from "@react-three/fiber";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { PropsWithChildren } from "react";
 
-import { FocusableCube } from "../components/focusable-cube";
+import { FocusableCube } from "#components/focusable-cube";
+import { Button } from "#components/ui/button";
 
 export const Route = createFileRoute("/")({
   component: LandingPageClient,
@@ -13,31 +14,25 @@ export const Route = createFileRoute("/")({
 
 function LandingPage({ children }: PropsWithChildren) {
   return (
-    <div className="flex h-[calc(100svh-3rem)] flex-col items-center">
-      <div className="mx-2 mt-12 text-center">
-        <h1 className="text-6xl font-bold">
-          A11y<span className="text-emerald-400">Tree</span>
+    <div className="isolate mt-[max(0rem,30svh-16rem)] flex h-[clamp(0rem,100svh-2.5rem,48rem)] flex-col items-center overflow-clip">
+      <div className="mx-2 text-center">
+        <h1 className="mt-6 text-[clamp(2.5rem,min(24svh-4rem,14svw),8rem)] font-bold [@media(max-height:400px)]:hidden [@media(max-width:250px)]:hidden">
+          A11y<span className="text-a11y-green">Tree</span>
         </h1>
-        <p className="mx-auto mt-4 max-w-md text-lg text-neutral-400">
+        <p className="text-muted-foreground mx-auto mt-2 max-w-md text-lg max-sm:hidden [@media(max-height:800px)]:hidden [@media(max-width:200px)]:hidden">
           Accessibility for any React component.
         </p>
       </div>
 
-      <div className="min-h-0 w-full grow">{children}</div>
+      <div className="-z-10 -mt-8 -mb-8 min-h-0 w-full grow">{children}</div>
 
-      <div className="mb-8 flex gap-4">
-        <a
-          href="/a11y-tree/docs/"
-          className="rounded-lg bg-neutral-100 px-6 py-3 font-medium text-neutral-900 hover:bg-white"
-        >
+      <div className="mb-4 flex gap-4 pb-4 [@media(max-width:200px)]:flex-col">
+        <Button size="lg" render={<a href="/a11y-tree/docs/" />}>
           Docs
-        </a>
-        <Link
-          to="/example"
-          className="rounded-lg border border-neutral-700 px-6 py-3 font-medium hover:bg-neutral-900"
-        >
+        </Button>
+        <Button size="lg" variant="outline" render={<Link to="/example" />}>
           Examples
-        </Link>
+        </Button>
       </div>
     </div>
   );

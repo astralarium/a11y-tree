@@ -1,17 +1,14 @@
-import {
-  A11yTreeContainer,
-  A11yTreeProvider,
-  A11yTreeRenderer,
-} from "@astralarium/a11y-tree";
+import { A11yTreeContainer, A11yTreeProvider } from "@astralarium/a11y-tree";
 import { Canvas } from "@react-three/fiber";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { FocusableCube } from "../../components/focusable-cube";
+import { FocusableCube } from "#components/focusable-cube";
 import {
+  TreeSheet,
   TreeVisibilityToggle,
-  VISIBLE_TREE_CLASSNAME,
-} from "../../components/tree-visibility-toggle";
+} from "#components/tree-visibility-toggle";
+
 import { Frame } from "./-frame";
 
 export const Route = createFileRoute("/example/focus")({
@@ -19,7 +16,7 @@ export const Route = createFileRoute("/example/focus")({
 });
 
 function Focus() {
-  const [showTree, setShowTree] = useState(false);
+  const [showTree, setShowTree] = useState(true);
 
   return (
     <Frame
@@ -40,7 +37,7 @@ function Focus() {
                 <div
                   role="group"
                   aria-label="Cubes"
-                  className="flex flex-col items-start gap-2"
+                  className="flex flex-col gap-2"
                 >
                   {content}
                 </div>
@@ -63,9 +60,7 @@ function Focus() {
               />
             </A11yTreeContainer>
           </Canvas>
-          <A11yTreeRenderer
-            className={showTree ? VISIBLE_TREE_CLASSNAME : "sr-only"}
-          />
+          <TreeSheet open={showTree} onOpenChange={setShowTree} />
         </div>
       </A11yTreeProvider>
     </Frame>

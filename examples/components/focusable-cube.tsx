@@ -56,7 +56,7 @@ export function FocusableCube({
           ref={buttonRef}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          className="rounded border border-neutral-600 px-3 py-1 focus:border-emerald-400 focus:text-emerald-300 focus:outline-none"
+          className="focus:border-a11y-green w-full rounded border px-3 py-1 focus:text-emerald-300 focus:outline-none"
         >
           {label}
         </button>
