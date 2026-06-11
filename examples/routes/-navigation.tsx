@@ -65,6 +65,7 @@ export function Navigation() {
                 <li key={example.to}>
                   <NavigationMenuLink
                     closeOnClick
+                    className="h-full rounded-lg border p-3"
                     render={
                       <Link to={example.to}>
                         <div className="text-sm font-medium">
