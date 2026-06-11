@@ -112,6 +112,16 @@ export function A11yTreeMultiplexer({
     }
   }, [itemOrder]);
 
+  // Drop slots created during discarded renders. Must be a passive
+  // effect: child SlotIn acquire effects run first, so every slot from
+  // a committed render holds a ref by now; survivors at refCount 0 were
+  // never committed. No version bump — they were never rendered.
+  useEffect(() => {
+    for (const [id, slot] of slotsRef.current) {
+      if (slot.refCount <= 0) slotsRef.current.delete(id);
+    }
+  });
+
   return (
     <A11yTreeMultiplexerContext.Provider
       value={{
