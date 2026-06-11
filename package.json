@@ -1,0 +1,79 @@
+{
+  "name": "@astralarium/a11y-tree",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "packageManager": "pnpm@11.4.0",
+  "description": "Accessibility tree for canvas-based React UIs",
+  "license": "MIT",
+  "author": "Mara Kim <mara@astralarium.net>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/astralarium/a11y-tree"
+  },
+  "keywords": [
+    "react",
+    "accessibility",
+    "a11y",
+    "canvas",
+    "screen-reader",
+    "react-three-fiber",
+    "pixi"
+  ],
+  "bugs": {
+    "url": "https://github.com/astralarium/a11y-tree/issues"
+  },
+  "homepage": "https://astralarium.github.io/a11y-tree",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b && eslint . && vite build && pnpm pack --out pack/%s-%v.tgz",
+    "build:docs": "typedoc",
+    "lint": "eslint .",
+    "check-types": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/a11y-tree.js"
+    }
+  },
+  "peerDependencies": {
+    "its-fine": "^2.0.0",
+    "react": "^19.2.0",
+    "tunnel-rat": "^0.1.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^25.0.9",
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "globals": "^17.0.0",
+    "its-fine": "^2.0.0",
+    "jsdom": "^29.0.0",
+    "prettier": "^3.8.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "tunnel-rat": "^0.1.2",
+    "typedoc": "^0.28.16",
+    "typedoc-rhineai-theme": "^1.2.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.53.1",
+    "vite": "^7.3.1",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^4.0.0"
+  }
+}
