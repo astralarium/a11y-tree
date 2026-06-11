@@ -1,9 +1,10 @@
 import { createContext, useContext } from "react";
-import type tunnel from "tunnel-rat";
+
+import type { FiberTunnel } from "./fiber-tunnel";
 
 export interface A11yTunnelContextValue {
-  /** The tunnel-rat instance for this subtree. */
-  tunnel: ReturnType<typeof tunnel>;
+  /** The tunnel instance for this subtree. */
+  tunnel: FiberTunnel;
 }
 
 /** React context for the nearest a11y tunnel. */

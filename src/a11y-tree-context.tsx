@@ -7,8 +7,8 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import tunnel from "tunnel-rat";
 
+import { fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 export interface A11yTreeProviderProps {
@@ -29,7 +29,7 @@ export interface A11yTreeProviderProps {
  * </A11yTreeProvider>
  */
 export function A11yTreeProvider({ children }: A11yTreeProviderProps) {
-  const [rootTunnel] = useState(() => tunnel());
+  const [rootTunnel] = useState(() => fiberTunnel());
 
   return (
     <FiberProvider>

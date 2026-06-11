@@ -2,8 +2,8 @@
 
 Accessibility for any React component.
 
-Build a parallel DOM accessibility tree for UIs that render outside the DOM — WebGL canvases, react-three-fiber scenes, Pixi stages, game UIs.
-Components declare their accessible markup where they live in the scene graph, and it is tunneled into a screen-reader-friendly DOM tree that mirrors the scene structure.
+Build a parallel DOM accessibility tree for UIs that render outside the DOM: WebGL canvases, react-three-fiber scenes, Pixi stages, game UIs.
+Components declare accessible markup wherever they live in the scene graph; it tunnels into a screenreader-friendly DOM tree that mirrors the scene.
 
 [Docs](https://astralarium.github.io/a11y-tree/)
 | [Github](https://github.com/astralarium/a11y-tree)
@@ -12,18 +12,22 @@ Components declare their accessible markup where they live in the scene graph, a
 ## Installation
 
 ```bash
-npm i @astralarium/a11y-tree its-fine tunnel-rat
+npm i @astralarium/a11y-tree its-fine
 ```
 
 ## Usage
 
-- [`<A11yTreeProvider>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeProvider.html): Root provider. Wrap your canvas (and the renderer) in it.
+- [`<A11yTreeProvider>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeProvider.html):
+  Root provider. Wrap your canvas (and `<A11yTreeRenderer>`) in it.
 
-- [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeRenderer.html): Renders the accessibility tree into the DOM. Place it in the canvas fallback or next to the canvas, visually hidden.
+- [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeRenderer.html):
+  Renders the accessibility tree into the DOM. Default class `"sr-only"` (ie. visually hidden in Tailwind. You must provide this class).
 
-- [`<A11yTreeElement>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeElement.html): Tunnels accessible markup from a scene component into the tree.
+- [`<A11yTreeElement>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeElement.html):
+  Tunnels accessible DOM markup from a scene component into the tree.
 
-- [`<A11yTreeContainer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeContainer.html): Wraps a subtree, so nested elements land inside its rendered wrapper. Containers nest.
+- [`<A11yTreeContainer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeContainer.html):
+  Wraps a subtree, so nested a11y tree components land inside.
 
 ```tsx
 <A11yTreeProvider>
@@ -55,25 +59,33 @@ The a11y tree mirrors the scene hierarchy:
 
 ### Multiplexing
 
-When items move between visual containers (a card from hand to board), remounting would drop focus and screen-reader position.
-[`<A11yTreeMultiplexer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMultiplexer.html) routes stable items into slots without remounting them:
+Enables performance-sensitive scenes to use memoized item arrays to avoid re-renders.
 
-- [`<A11yTreeSlot>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlot.html): Defines a slot in the tree structure. Only renders while an item occupies it.
+- [`<A11yTreeMultiplexer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMultiplexer.html):
+  Routes items into slots as data; memoized content moves without remounting or re-rendering:
 
-- [`<A11yTreeSlotGroup>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlotGroup.html): Groups slots under a shared wrapper, ordered by their position in the React tree.
+- [`<A11yTreeSlot>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlot.html):
+  Defines a slot in the tree structure. Only renders while an item is inside.
+
+- [`<A11yTreeSlotGroup>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlotGroup.html):
+  Groups slots under a shared wrapper, ordered by position in the React tree.
 
 ```tsx
-<A11yTreeMultiplexer
-  items={cards.map((card) => ({
-    key: card.id,
-    slotId: card.zone, // "hand" | "board"
-    render: (
-      <A11yTreeElement>
-        <div role="option">{card.name}</div>
-      </A11yTreeElement>
-    ),
-  }))}
->
+const items = useMemo(
+  () =>
+    cards.map((card) => ({
+      key: card.id,
+      slotId: card.zone, // "hand" | "board"
+      render: (
+        <A11yTreeElement>
+          <div role="option">{card.name}</div>
+        </A11yTreeElement>
+      ),
+    })),
+  [cards],
+);
+
+<A11yTreeMultiplexer items={items}>
   <A11yTreeSlotGroup
     render={(content) => (
       <div role="region" aria-label="Battlefield">
@@ -98,15 +110,38 @@ When items move between visual containers (a card from hand to board), remountin
       )}
     />
   </A11yTreeSlotGroup>
-</A11yTreeMultiplexer>
+</A11yTreeMultiplexer>;
 ```
 
-Items keep their React identity (by `key`) when `slotId` changes, so focus and component state survive zone changes.
+Items keep React identity (by `key`) when `slotId` changes, so focus and component state survive zone changes.
+Memoized `render` elements do not re-render when they change order.
+
+### Tunnels
+
+The tunnel primitive powering the tree is exported for standalone use:
+
+```tsx
+import { fiberTunnel } from "@astralarium/a11y-tree";
+
+const status = fiberTunnel();
+
+// Anywhere in your app — even in a different React root:
+<status.In>
+  <span>Saving…</span>
+</status.In>;
+
+// Content from every In renders here:
+<status.Out />;
+```
+
+Unlike [tunnel-rat](https://github.com/pmndrs/tunnel-rat), `Out` content is ordered by each `In`'s position in the React tree, not registration order.
+Tree ordering requires a `FiberProvider` from [its-fine](https://github.com/pmndrs/its-fine) above the `In`s (`A11yTreeProvider` provides one).
 
 ### Notes
 
-- `A11yTreeRenderer` defaults to `className="sr-only"` — provide a visually-hidden utility class (Tailwind ships one) or pass your own.
-- Context from the scene tree is bridged into tunneled markup via [its-fine](https://github.com/pmndrs/its-fine), so providers above an `A11yTreeElement` are visible to its children.
+- Tunneled elements are ordered by their position in the React tree, so the a11y tree structure follows scene order.
+- Context from the scene tree is bridged into tunneled markup via [its-fine](https://github.com/pmndrs/its-fine),
+  so providers above an `A11yTreeElement` are visible to its children.
 
 [See examples on the documentation website](https://astralarium.github.io/a11y-tree)
 

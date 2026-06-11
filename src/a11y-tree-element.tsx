@@ -1,7 +1,7 @@
 import { useContextBridge } from "its-fine";
-import { Fragment, type ReactNode, useId, useState } from "react";
-import tunnel from "tunnel-rat";
+import { type ReactNode, useState } from "react";
 
+import { fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 export interface A11yTreeElementProps {
@@ -11,14 +11,9 @@ export interface A11yTreeElementProps {
 
 /** Tunnels children into the a11y tree. */
 export function A11yTreeElement({ children }: A11yTreeElementProps) {
-  const tunnelKey = useId();
   const { tunnel: parentTunnel } = useA11yTunnel();
 
-  return (
-    <parentTunnel.In>
-      <Fragment key={tunnelKey}>{children}</Fragment>
-    </parentTunnel.In>
-  );
+  return <parentTunnel.In>{children}</parentTunnel.In>;
 }
 
 export interface A11yTreeContainerProps {
@@ -33,18 +28,15 @@ export function A11yTreeContainer({
   children,
   render,
 }: A11yTreeContainerProps) {
-  const [ownTunnel] = useState(() => tunnel());
-  const tunnelKey = useId();
+  const [ownTunnel] = useState(() => fiberTunnel());
   const { tunnel: parentTunnel } = useA11yTunnel();
   const ContextBridge = useContextBridge();
 
   return (
     <>
       <parentTunnel.In>
-        <Fragment key={tunnelKey}>
-          {/* eslint-disable-next-line react-hooks/static-components */}
-          <ContextBridge>{render(<ownTunnel.Out />)}</ContextBridge>
-        </Fragment>
+        {/* eslint-disable-next-line react-hooks/static-components */}
+        <ContextBridge>{render(<ownTunnel.Out />)}</ContextBridge>
       </parentTunnel.In>
       <A11yTunnelContext.Provider value={{ tunnel: ownTunnel }}>
         {children}

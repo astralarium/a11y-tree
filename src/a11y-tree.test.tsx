@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { type ReactNode } from "react";
+import { memo, type ReactNode, useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import { A11yTreeProvider, A11yTreeRenderer } from "./a11y-tree-context";
@@ -11,6 +11,7 @@ import {
   A11yTreeSlot,
   A11yTreeSlotGroup,
 } from "./a11y-tree-multiplexer";
+import { fiberTunnel } from "./fiber-tunnel";
 
 function TestProvider({ children }: { children: ReactNode }) {
   return (
@@ -29,6 +30,129 @@ describe("A11yTreeProvider", () => {
       </TestProvider>,
     );
     expect(screen.getByTestId("child")).toBeInTheDocument();
+  });
+});
+
+describe("tunnel ordering", () => {
+  test("keeps element order when a tunneled element re-renders", () => {
+    function CounterElement({ label }: { label: string }) {
+      const [count, setCount] = useState(0);
+      return (
+        <A11yTreeElement>
+          <button onClick={() => setCount((c) => c + 1)}>
+            {label} {count}
+          </button>
+        </A11yTreeElement>
+      );
+    }
+
+    render(
+      <TestProvider>
+        <CounterElement label="First" />
+        <CounterElement label="Second" />
+        <CounterElement label="Third" />
+      </TestProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "First 0" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second 0" }));
+
+    const buttons = screen.getAllByRole("button");
+    expect(buttons[0]).toHaveTextContent("First 1");
+    expect(buttons[1]).toHaveTextContent("Second 1");
+    expect(buttons[2]).toHaveTextContent("Third 0");
+  });
+
+  test("keeps element order when elements mount later", () => {
+    function TestComponent({ showFirst }: { showFirst: boolean }) {
+      return (
+        <TestProvider>
+          {showFirst && (
+            <A11yTreeElement>
+              <button>First</button>
+            </A11yTreeElement>
+          )}
+          <A11yTreeElement>
+            <button>Second</button>
+          </A11yTreeElement>
+        </TestProvider>
+      );
+    }
+
+    const { rerender } = render(<TestComponent showFirst={false} />);
+    act(() => {
+      rerender(<TestComponent showFirst={true} />);
+    });
+
+    const buttons = screen.getAllByRole("button");
+    expect(buttons[0]).toHaveTextContent("First");
+    expect(buttons[1]).toHaveTextContent("Second");
+  });
+
+  test("picks up a reorder of memoized elements on the next tunnel update", () => {
+    const MemoItem = memo(function MemoItem({ label }: { label: string }) {
+      return (
+        <A11yTreeElement>
+          <button>{label}</button>
+        </A11yTreeElement>
+      );
+    });
+
+    function Flusher() {
+      const [count, setCount] = useState(0);
+      return (
+        <A11yTreeElement>
+          <button onClick={() => setCount((c) => c + 1)}>flush {count}</button>
+        </A11yTreeElement>
+      );
+    }
+
+    function TestComponent({ order }: { order: string[] }) {
+      return (
+        <TestProvider>
+          {order.map((label) => (
+            <MemoItem key={label} label={label} />
+          ))}
+          <Flusher />
+        </TestProvider>
+      );
+    }
+
+    const { rerender } = render(<TestComponent order={["A", "B", "C"]} />);
+    // Memoized items don't re-render on the move; the tunnel's next
+    // update re-derives order from the fiber tree.
+    rerender(<TestComponent order={["C", "A", "B"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "flush 0" }));
+
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "C",
+      "A",
+      "B",
+      "flush 1",
+    ]);
+  });
+});
+
+describe("fiberTunnel", () => {
+  test("keeps items from multiple React roots without a FiberProvider", () => {
+    const t = fiberTunnel();
+    render(
+      <t.In>
+        <button>RootOne</button>
+      </t.In>,
+    );
+    render(
+      <>
+        <t.In>
+          <button>RootTwo</button>
+        </t.In>
+        <t.Out />
+      </>,
+    );
+
+    expect(screen.getByRole("button", { name: "RootOne" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "RootTwo" })).toBeInTheDocument();
   });
 });
 
@@ -934,5 +1058,138 @@ describe("A11yTreeMultiplexer stress tests", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("listbox", { name: "s2" })).toBeInTheDocument();
     expect(screen.getAllByRole("option")).toHaveLength(4);
+  });
+});
+
+describe("A11yTreeSlotGroup nesting", () => {
+  test("slots nested under another tunnel inside a group render into the group", () => {
+    render(
+      <TestProvider>
+        <A11yTreeMultiplexer
+          items={[
+            {
+              slotId: "s1",
+              render: (
+                <A11yTreeElement>
+                  <div role="option">Item One</div>
+                </A11yTreeElement>
+              ),
+            },
+          ]}
+        >
+          <A11yTreeSlotGroup
+            render={(content) => (
+              <div role="listbox" aria-label="group">
+                {content}
+              </div>
+            )}
+          >
+            <A11yTreeContainer
+              render={(content) => (
+                <div role="group" aria-label="container">
+                  {content}
+                </div>
+              )}
+            >
+              <A11yTreeSlot
+                id="s1"
+                render={(content) => (
+                  <div role="list" aria-label="slot">
+                    {content}
+                  </div>
+                )}
+              />
+            </A11yTreeContainer>
+          </A11yTreeSlotGroup>
+        </A11yTreeMultiplexer>
+      </TestProvider>,
+    );
+
+    const group = screen.getByRole("listbox", { name: "group" });
+    const container = screen.getByRole("group", { name: "container" });
+    const slot = screen.getByRole("list", { name: "slot" });
+    expect(group).toContainElement(slot);
+    expect(container).not.toContainElement(slot);
+    expect(slot).toContainElement(
+      screen.getByRole("option", { name: "Item One" }),
+    );
+  });
+});
+
+describe("A11yTreeMultiplexer memoized reorder", () => {
+  // Stable element identities: moved content never re-renders, so a
+  // reorder is only visible via the items prop.
+  const RENDERS: Record<string, ReactNode> = {
+    A: (
+      <A11yTreeElement>
+        <div role="option">A</div>
+      </A11yTreeElement>
+    ),
+    B: (
+      <A11yTreeElement>
+        <div role="option">B</div>
+      </A11yTreeElement>
+    ),
+    C: (
+      <A11yTreeElement>
+        <div role="option">C</div>
+      </A11yTreeElement>
+    ),
+  };
+
+  test("reordering items with memoized render elements reorders the slot", () => {
+    function TestComponent({ order }: { order: string[] }) {
+      return (
+        <TestProvider>
+          <A11yTreeMultiplexer
+            items={order.map((key) => ({
+              key,
+              slotId: "s",
+              render: RENDERS[key],
+            }))}
+          >
+            <A11yTreeSlot
+              id="s"
+              render={(content) => <div role="listbox">{content}</div>}
+            />
+          </A11yTreeMultiplexer>
+        </TestProvider>
+      );
+    }
+
+    const { rerender } = render(<TestComponent order={["A", "B", "C"]} />);
+    rerender(<TestComponent order={["C", "A", "B"]} />);
+
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "C",
+      "A",
+      "B",
+    ]);
+  });
+
+  test("swapping a keyed item's memoized render node updates the slot", () => {
+    // Key order is unchanged, so the multiplexer does not refresh; the
+    // swapped element must propagate through the tunnels on its own.
+    function TestComponent({ label }: { label: string }) {
+      return (
+        <TestProvider>
+          <A11yTreeMultiplexer
+            items={[{ key: "x", slotId: "s", render: RENDERS[label] }]}
+          >
+            <A11yTreeSlot
+              id="s"
+              render={(content) => <div role="listbox">{content}</div>}
+            />
+          </A11yTreeMultiplexer>
+        </TestProvider>
+      );
+    }
+
+    const { rerender } = render(<TestComponent label="A" />);
+    expect(screen.getByRole("option")).toHaveTextContent("A");
+
+    rerender(<TestComponent label="B" />);
+    expect(screen.getByRole("option")).toHaveTextContent("B");
   });
 });

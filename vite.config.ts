@@ -106,13 +106,7 @@ export default defineConfig({
     },
     rollupOptions: {
       external: (id) =>
-        [
-          "react",
-          "react-dom",
-          "react/jsx-runtime",
-          "its-fine",
-          "tunnel-rat",
-        ].includes(id),
+        ["react", "react-dom", "react/jsx-runtime", "its-fine"].includes(id),
     },
   },
   test: {

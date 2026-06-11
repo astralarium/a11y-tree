@@ -1,63 +1,49 @@
-import { type Fiber, useContextBridge, useFiber } from "its-fine";
+import { useContextBridge } from "its-fine";
 import {
   createContext,
-  Fragment,
   type Key,
   type ReactNode,
   useContext,
   useEffect,
   useEffectEvent,
-  useId,
   useRef,
   useState,
 } from "react";
-import tunnel from "tunnel-rat";
 
+import { type FiberTunnel, fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
-import { sortByFiberOrder } from "./util";
+import { useIsomorphicLayoutEffect } from "./util";
 
 interface SlotData {
-  tunnel: ReturnType<typeof tunnel>;
-  parentTunnel: ReturnType<typeof tunnel>;
+  tunnel: FiberTunnel;
+  parentTunnel: FiberTunnel;
   refCount: number;
 }
 
 interface A11yTreeMultiplexerContextValue {
-  getOrCreateSlot: (
-    id: string,
-    parentTunnel: ReturnType<typeof tunnel>,
-  ) => SlotData;
-  acquireSlot: (id: string, parentTunnel: ReturnType<typeof tunnel>) => void;
+  getOrCreateSlot: (id: string, parentTunnel: FiberTunnel) => SlotData;
+  acquireSlot: (id: string, parentTunnel: FiberTunnel) => void;
   releaseSlot: (id: string) => void;
   getSlot: (id: string) => SlotData | undefined;
-  bumpVersion: () => void;
+  /**
+   * Bumped when a slot may appear or disappear. Never read, but keeps
+   * the compiler-memoized context value fresh so consumers re-render
+   * on refCount changes (slot state lives in a ref).
+   */
   version: number;
 }
 
 const A11yTreeMultiplexerContext =
   createContext<A11yTreeMultiplexerContextValue | null>(null);
 
-interface SlotRenderRegistration {
-  id: string;
-  render: (content: ReactNode) => ReactNode;
-  fiber?: Fiber;
-}
-
-interface A11ySlotGroupContextValue {
-  registerSlotRender: (reg: SlotRenderRegistration) => void;
-  unregisterSlotRender: (id: string) => void;
-}
-
-const A11ySlotGroupContext = createContext<A11ySlotGroupContextValue | null>(
-  null,
-);
+/** The enclosing group's tunnel, unaffected by A11yTunnelContext
+ * overrides nested between the group and its slots. */
+const A11ySlotGroupContext = createContext<FiberTunnel | null>(null);
 
 export interface A11yTreeMultiplexerItem {
   slotId: string;
   key?: Key;
   render: ReactNode;
-  /** Parent tunnel override */
-  parentTunnel?: ReturnType<typeof tunnel>;
 }
 
 export interface A11yTreeMultiplexerProps {
@@ -80,21 +66,23 @@ export function A11yTreeMultiplexer({
   const slotsRef = useRef(new Map<string, SlotData>());
   const [version, setVersion] = useState(0);
 
-  function getOrCreateSlot(
-    id: string,
-    parentTunnel: ReturnType<typeof tunnel>,
-  ): SlotData {
+  function getOrCreateSlot(id: string, parentTunnel: FiberTunnel): SlotData {
     const existing = slotsRef.current.get(id);
     if (existing) return existing;
 
-    const newSlot: SlotData = { tunnel: tunnel(), parentTunnel, refCount: 0 };
+    const newSlot: SlotData = {
+      tunnel: fiberTunnel(),
+      parentTunnel,
+      refCount: 0,
+    };
     slotsRef.current.set(id, newSlot);
     return newSlot;
   }
 
-  function acquireSlot(id: string, parentTunnel: ReturnType<typeof tunnel>) {
+  function acquireSlot(id: string, parentTunnel: FiberTunnel) {
     const slot = getOrCreateSlot(id, parentTunnel);
     slot.refCount++;
+    setVersion((v) => v + 1);
   }
 
   function releaseSlot(id: string) {
@@ -112,9 +100,17 @@ export function A11yTreeMultiplexer({
     return slotsRef.current.get(id);
   }
 
-  function bumpVersion() {
-    setVersion((v) => v + 1);
-  }
+  // Keyed reorders of memoized items never re-render the moved Ins, so
+  // refresh slot tunnels when key order changes. Any other items change
+  // updates the tunnels via the affected Ins.
+  const itemOrder = JSON.stringify(
+    items.map((item, index) => String(item.key ?? index)),
+  );
+  useIsomorphicLayoutEffect(() => {
+    for (const slot of slotsRef.current.values()) {
+      slot.tunnel.refresh();
+    }
+  }, [itemOrder]);
 
   return (
     <A11yTreeMultiplexerContext.Provider
@@ -123,17 +119,12 @@ export function A11yTreeMultiplexer({
         acquireSlot,
         releaseSlot,
         getSlot,
-        bumpVersion,
         version,
       }}
     >
       {children}
       {items.map((item, idx) => (
-        <A11yTreeSlotIn
-          key={item.key ?? idx}
-          slotId={item.slotId}
-          parentTunnel={item.parentTunnel}
-        >
+        <A11yTreeSlotIn key={item.key ?? idx} slotId={item.slotId}>
           {item.render}
         </A11yTreeSlotIn>
       ))}
@@ -146,76 +137,25 @@ export interface A11yTreeSlotGroupProps {
   children: ReactNode;
   /** Wraps the group content, e.g. `(content) => <NavigableRoot>{content}</NavigableRoot>`. */
   render: (content: ReactNode) => ReactNode;
-  /** Parent tunnel override */
-  parentTunnel?: ReturnType<typeof tunnel>;
 }
 
 /** Groups multiple A11yTreeSlot components under a shared wrapper. */
 export function A11yTreeSlotGroup({
   children,
   render,
-  parentTunnel: parentTunnelProp,
 }: A11yTreeSlotGroupProps) {
-  const tunnelKey = useId();
-  const { tunnel: contextTunnel } = useA11yTunnel();
-  const parentTunnel = parentTunnelProp ?? contextTunnel;
-  const [groupTunnel] = useState(() => tunnel());
+  const { tunnel: parentTunnel } = useA11yTunnel();
+  const [groupTunnel] = useState(() => fiberTunnel());
   const ContextBridge = useContextBridge();
-  const ctx = useContext(A11yTreeMultiplexerContext);
-  const fiber = useFiber();
-
-  const [slotRenders, setSlotRenders] = useState<SlotRenderRegistration[]>([]);
-
-  function registerSlotRender(reg: SlotRenderRegistration) {
-    setSlotRenders((prev) => {
-      const existing = prev.findIndex((r) => r.id === reg.id);
-      if (existing !== -1) {
-        const next = [...prev];
-        next[existing] = reg;
-        return next;
-      }
-      return [...prev, reg];
-    });
-  }
-
-  function unregisterSlotRender(id: string) {
-    setSlotRenders((prev) => prev.filter((r) => r.id !== id));
-  }
-
-  const activeSlots = sortByFiberOrder(
-    slotRenders.filter((reg) => {
-      const slot = ctx?.getSlot(reg.id);
-      return slot && slot.refCount > 0;
-    }),
-    fiber,
-  );
 
   return (
     <>
       <parentTunnel.In>
-        <Fragment key={tunnelKey}>
-          {/* eslint-disable-next-line react-hooks/static-components */}
-          <ContextBridge>
-            {render(
-              <>
-                {activeSlots.map((reg) => {
-                  const slot = ctx?.getSlot(reg.id);
-                  if (!slot) return null;
-                  return (
-                    <Fragment key={reg.id}>
-                      {reg.render(<slot.tunnel.Out />)}
-                    </Fragment>
-                  );
-                })}
-              </>,
-            )}
-          </ContextBridge>
-        </Fragment>
+        {/* eslint-disable-next-line react-hooks/static-components */}
+        <ContextBridge>{render(<groupTunnel.Out />)}</ContextBridge>
       </parentTunnel.In>
       <A11yTunnelContext.Provider value={{ tunnel: groupTunnel }}>
-        <A11ySlotGroupContext.Provider
-          value={{ registerSlotRender, unregisterSlotRender }}
-        >
+        <A11ySlotGroupContext.Provider value={groupTunnel}>
           {children}
         </A11ySlotGroupContext.Provider>
       </A11yTunnelContext.Provider>
@@ -232,32 +172,23 @@ export interface A11yTreeSlotProps {
 
 /** Defines a slot in the a11y tree structure. */
 export function A11yTreeSlot({ id, render }: A11yTreeSlotProps) {
-  const tunnelKey = useId();
   const ctx = useContext(A11yTreeMultiplexerContext);
-  const slotGroupContext = useContext(A11ySlotGroupContext);
+  const groupTunnel = useContext(A11ySlotGroupContext);
   const ContextBridge = useContextBridge();
-  const fiber = useFiber();
 
-  useEffect(() => {
-    if (!slotGroupContext) return;
-    slotGroupContext.registerSlotRender({ id, render, fiber });
-    return () => slotGroupContext.unregisterSlotRender(id);
-  }, [slotGroupContext, id, render, fiber]);
-
-  if (slotGroupContext) return null;
   if (!ctx) return null;
 
   const slot = ctx.getSlot(id);
   if (!slot || slot.refCount <= 0) return null;
 
-  const parentTunnel = slot.parentTunnel;
+  // Grouped slots render into the group tunnel; standalone slots into
+  // the parent tunnel captured at slot creation.
+  const parentTunnel = groupTunnel ?? slot.parentTunnel;
 
   return (
     <parentTunnel.In>
-      <Fragment key={tunnelKey}>
-        {/* eslint-disable-next-line react-hooks/static-components */}
-        <ContextBridge>{render(<slot.tunnel.Out />)}</ContextBridge>
-      </Fragment>
+      {/* eslint-disable-next-line react-hooks/static-components */}
+      <ContextBridge>{render(<slot.tunnel.Out />)}</ContextBridge>
     </parentTunnel.In>
   );
 }
@@ -267,8 +198,6 @@ export interface A11yTreeSlotInProps {
   slotId: string;
   /** Visual children. A11y content from these will tunnel to the slot. */
   children: ReactNode;
-  /** Parent tunnel override */
-  parentTunnel?: ReturnType<typeof tunnel>;
 }
 
 /**
@@ -276,20 +205,14 @@ export interface A11yTreeSlotInProps {
  * Creates slot on render, releases on unmount.
  * Key by entity ID to prevent remounts when items move between slots.
  */
-export function A11yTreeSlotIn({
-  slotId,
-  children,
-  parentTunnel: parentTunnelProp,
-}: A11yTreeSlotInProps) {
+export function A11yTreeSlotIn({ slotId, children }: A11yTreeSlotInProps) {
   const ctx = useContext(A11yTreeMultiplexerContext);
-  const { tunnel: contextTunnel } = useA11yTunnel();
-  const parentTunnel = parentTunnelProp ?? contextTunnel;
+  const { tunnel: parentTunnel } = useA11yTunnel();
   const acquiredSlotRef = useRef<string | null>(null);
 
   const acquire = useEffectEvent((id: string) => {
     if (!ctx) return;
     ctx.acquireSlot(id, parentTunnel);
-    ctx.bumpVersion();
     acquiredSlotRef.current = id;
   });
 
@@ -304,7 +227,6 @@ export function A11yTreeSlotIn({
   useEffect(() => {
     const prevSlotId = acquiredSlotRef.current;
 
-    // Release previous slot if changing to a different one
     if (prevSlotId !== null && prevSlotId !== slotId) {
       release(prevSlotId);
     }
@@ -312,7 +234,7 @@ export function A11yTreeSlotIn({
     acquire(slotId);
 
     return () => {
-      // On cleanup, release the slot we actually acquired (tracked in ref)
+      // Release the slot actually held; slotId may have changed since.
       const toRelease = acquiredSlotRef.current;
       if (toRelease !== null) {
         release(toRelease);
