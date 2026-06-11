@@ -118,6 +118,23 @@ const items = useMemo(
 Items keep React identity (by `key`) when `slotId` changes, so focus and component state survive zone changes.
 Memoized `render` elements do not re-render when they change order.
 
+### Error handling
+
+Errors thrown by tunneled content are caught in `A11yTreeRenderer`; the default UI is a dismissible dialog.
+Replace it with the `fallback` prop, wrapped in
+[`<A11yTreeFallbackRenderer portal>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeFallbackRenderer.html)
+to portal it out of the visually hidden tree container:
+
+```tsx
+<A11yTreeRenderer
+  fallback={({ error, reset }) => (
+    <A11yTreeFallbackRenderer portal>
+      <MyErrorToast message={error?.message} onDismiss={reset} />
+    </A11yTreeFallbackRenderer>
+  )}
+/>
+```
+
 ### Tunnels
 
 The tunnel primitive powering the tree is exported for standalone use:
@@ -142,6 +159,8 @@ Tree ordering requires a `FiberProvider` from [its-fine](https://github.com/pmnd
 ### Notes
 
 - Tunneled elements are ordered by their position in the React tree, so the a11y tree structure follows scene order.
+- Tunnel updates re-derive order by walking the React tree, and an `A11yTreeElement` updates whenever its parent re-renders.
+  Keep elements out of components that re-render every frame, or route them through the multiplexer as memoized items.
 - Context from the scene tree is bridged into tunneled markup via [its-fine](https://github.com/pmndrs/its-fine),
   so providers above an `A11yTreeElement` are visible to its children.
 

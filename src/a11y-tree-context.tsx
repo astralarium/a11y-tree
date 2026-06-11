@@ -40,6 +40,13 @@ export function A11yTreeProvider({ children }: A11yTreeProviderProps) {
   );
 }
 
+export interface A11yTreeErrorFallbackProps {
+  /** Error thrown from tunneled content. */
+  error: Error | null;
+  /** Clears the error and re-renders the tree. */
+  reset: () => void;
+}
+
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
@@ -62,6 +69,29 @@ const errorDialogStyle: CSSProperties = {
   zIndex: 2147483647,
 };
 
+export interface A11yTreeFallbackRendererProps {
+  /** Fallback UI. */
+  children: ReactNode;
+  /** Portal children to `document.body`, out of the (possibly
+   * visually hidden) tree container. Renders in place during SSR. */
+  portal?: boolean;
+}
+
+/**
+ * Renders fallback UI for the a11y tree. With `portal`, content
+ * escapes the tree container, where in-place content is never painted;
+ * the built-in error dialog uses this.
+ */
+export function A11yTreeFallbackRenderer({
+  children,
+  portal = false,
+}: A11yTreeFallbackRendererProps) {
+  if (!portal || typeof document === "undefined") {
+    return children;
+  }
+  return createPortal(children, document.body);
+}
+
 function TunnelErrorDialog({
   error,
   onDismiss,
@@ -69,26 +99,25 @@ function TunnelErrorDialog({
   error: Error | null;
   onDismiss: () => void;
 }) {
-  const content = (
-    <dialog open onClose={onDismiss} style={errorDialogStyle}>
-      <div role="alert" aria-live="assertive">
-        Accessibility tree error: {error?.message ?? "Unknown error"}
-      </div>
-      <button type="button" onClick={onDismiss}>
-        Dismiss
-      </button>
-    </dialog>
+  return (
+    <A11yTreeFallbackRenderer portal>
+      <dialog open onClose={onDismiss} style={errorDialogStyle}>
+        <div role="alert" aria-live="assertive">
+          Accessibility tree error: {error?.message ?? "Unknown error"}
+        </div>
+        <button type="button" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </dialog>
+    </A11yTreeFallbackRenderer>
   );
-  // Portal out: the renderer lives inside a canvas fallback / sr-only
-  // container, where in-place content is never painted.
-  if (typeof document === "undefined") {
-    return content;
-  }
-  return createPortal(content, document.body);
 }
 
 class TunnelErrorBoundary extends Component<
-  { children: ReactNode },
+  {
+    children: ReactNode;
+    fallback?: (props: A11yTreeErrorFallbackProps) => ReactNode;
+  },
   ErrorBoundaryState
 > {
   state: ErrorBoundaryState = { hasError: false, error: null };
@@ -104,6 +133,12 @@ class TunnelErrorBoundary extends Component<
   };
   render() {
     if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback({
+          error: this.state.error,
+          reset: this.handleDismiss,
+        });
+      }
       return (
         <TunnelErrorDialog
           error={this.state.error}
@@ -117,14 +152,22 @@ class TunnelErrorBoundary extends Component<
 
 export interface A11yTreeRendererProps {
   className?: string;
+  /**
+   * Custom error UI replacing the built-in dialog. Renders in place of
+   * the tree container (which may be visually hidden); wrap in
+   * `A11yTreeFallbackRenderer` with `portal` if the error should be
+   * visible.
+   */
+  fallback?: (props: A11yTreeErrorFallbackProps) => ReactNode;
 }
 
 export function A11yTreeRenderer({
   className = "sr-only",
+  fallback,
 }: A11yTreeRendererProps) {
   const { tunnel } = useA11yTunnel();
   return (
-    <TunnelErrorBoundary>
+    <TunnelErrorBoundary fallback={fallback}>
       <div className={className}>
         <tunnel.Out />
       </div>

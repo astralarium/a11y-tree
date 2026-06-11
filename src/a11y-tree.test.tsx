@@ -4,7 +4,11 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { memo, type ReactNode, useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
-import { A11yTreeProvider, A11yTreeRenderer } from "./a11y-tree-context";
+import {
+  A11yTreeFallbackRenderer,
+  A11yTreeProvider,
+  A11yTreeRenderer,
+} from "./a11y-tree-context";
 import { A11yTreeContainer, A11yTreeElement } from "./a11y-tree-element";
 import {
   A11yTreeMultiplexer,
@@ -189,6 +193,53 @@ describe("TunnelErrorBoundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Recovered" }),
+    ).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  test("renders custom fallback instead of the built-in dialog", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    let shouldThrow = true;
+    function Boom() {
+      if (shouldThrow) {
+        throw new Error("boom");
+      }
+      return <button>Recovered</button>;
+    }
+
+    const { container } = render(
+      <A11yTreeProvider>
+        <A11yTreeElement>
+          <Boom />
+        </A11yTreeElement>
+        <A11yTreeRenderer
+          className="a11y-output"
+          fallback={({ error, reset }) => (
+            <A11yTreeFallbackRenderer portal>
+              <div role="status">
+                custom: {error?.message}
+                <button onClick={reset}>Reset</button>
+              </div>
+            </A11yTreeFallbackRenderer>
+          )}
+        />
+      </A11yTreeProvider>,
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("custom: boom");
+    // Portaled to document.body by A11yTreeFallbackRenderer
+    expect(container).not.toContainElement(status);
+
+    shouldThrow = false;
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Recovered" }),
     ).toBeInTheDocument();
