@@ -17,13 +17,13 @@ npm i @astralarium/a11y-tree its-fine tunnel-rat
 
 ## Usage
 
-- [`<A11yTreeProvider>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeProvider.html): Root provider. Wrap your canvas (and the renderer) in it.
+- [`<A11yTreeProvider>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeProvider.html): Root provider. Wrap your canvas (and the renderer) in it.
 
-- [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeRenderer.html): Renders the accessibility tree into the DOM. Place it in the canvas fallback or next to the canvas, visually hidden.
+- [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeRenderer.html): Renders the accessibility tree into the DOM. Place it in the canvas fallback or next to the canvas, visually hidden.
 
-- [`<A11yTreeElement>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeElement.html): Tunnels accessible markup from a scene component into the tree.
+- [`<A11yTreeElement>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeElement.html): Tunnels accessible markup from a scene component into the tree.
 
-- [`<A11yTreeContainer>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeContainer.html): Wraps a subtree, so nested elements land inside its rendered wrapper. Containers nest.
+- [`<A11yTreeContainer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeContainer.html): Wraps a subtree, so nested elements land inside its rendered wrapper. Containers nest.
 
 ```tsx
 <A11yTreeProvider>
@@ -56,11 +56,11 @@ The a11y tree mirrors the scene hierarchy:
 ### Multiplexing
 
 When items move between visual containers (a card from hand to board), remounting would drop focus and screen-reader position.
-[`<A11yTreeMultiplexer>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeMultiplexer.html) routes stable items into slots without remounting them:
+[`<A11yTreeMultiplexer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMultiplexer.html) routes stable items into slots without remounting them:
 
-- [`<A11yTreeSlot>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeSlot.html): Defines a slot in the tree structure. Only renders while an item occupies it.
+- [`<A11yTreeSlot>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlot.html): Defines a slot in the tree structure. Only renders while an item occupies it.
 
-- [`<A11yTreeSlotGroup>`](https://astralarium.github.io/a11y-tree/functions/A11yTreeSlotGroup.html): Groups slots under a shared wrapper, ordered by their position in the React tree.
+- [`<A11yTreeSlotGroup>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlotGroup.html): Groups slots under a shared wrapper, ordered by their position in the React tree.
 
 ```tsx
 <A11yTreeMultiplexer
@@ -108,12 +108,13 @@ Items keep their React identity (by `key`) when `slotId` changes, so focus and c
 - `A11yTreeRenderer` defaults to `className="sr-only"` — provide a visually-hidden utility class (Tailwind ships one) or pass your own.
 - Context from the scene tree is bridged into tunneled markup via [its-fine](https://github.com/pmndrs/its-fine), so providers above an `A11yTreeElement` are visible to its children.
 
+[See examples on the documentation website](https://astralarium.github.io/a11y-tree)
+
 ## Development
 
 ```bash
 pnpm install
-pnpm test
-pnpm build
+pnpm dev
 ```
 
 This project uses React Compiler.

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.pages.tsbuildinfo",
+    "baseUrl": ".",
+    "paths": {
+      "@astralarium/a11y-tree": ["./src/index.ts"]
+    }
+  },
+  "include": ["examples"]
+}
