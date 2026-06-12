@@ -4,10 +4,14 @@ import {
   type CSSProperties,
   type ErrorInfo,
   type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 
+import { isDevEnv } from "./env";
 import { fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
@@ -150,6 +154,36 @@ class TunnelErrorBoundary extends Component<
   }
 }
 
+/**
+ * Dev-only: warns when the tree container renders visibly with the
+ * default `"sr-only"` className, i.e. no visually-hidden CSS rule
+ * backs it. Custom classNames are trusted. No-op in production and
+ * where ResizeObserver is absent.
+ */
+function useHiddenContainerWarning(
+  ref: RefObject<HTMLDivElement | null>,
+  className: string,
+) {
+  useEffect(() => {
+    if (!isDevEnv || className !== "sr-only") return;
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const { width, height } = node.getBoundingClientRect();
+      if (width > 1 || height > 1) {
+        observer.disconnect();
+        console.warn(
+          `A11yTreeRenderer container is visible (${Math.round(width)}×${Math.round(height)}px). ` +
+            `No CSS rule hides the default "sr-only" className; ` +
+            `add the Tailwind sr-only utility, or pass a different className`,
+        );
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref, className]);
+}
+
 export interface A11yTreeRendererProps {
   className?: string;
   /**
@@ -166,9 +200,11 @@ export function A11yTreeRenderer({
   fallback,
 }: A11yTreeRendererProps) {
   const { tunnel } = useA11yTunnel();
+  const containerRef = useRef<HTMLDivElement>(null);
+  useHiddenContainerWarning(containerRef, className);
   return (
     <TunnelErrorBoundary fallback={fallback}>
-      <div className={className}>
+      <div ref={containerRef} className={className}>
         <tunnel.Out />
       </div>
     </TunnelErrorBoundary>

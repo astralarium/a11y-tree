@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { isDevEnv } from "./env";
 import { type FiberTunnel, fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 import { useIsomorphicLayoutEffect } from "./util";
@@ -81,6 +82,14 @@ export function A11yTreeMultiplexer({
 
   function acquireSlot(id: string, parentTunnel: FiberTunnel) {
     const slot = getOrCreateSlot(id, parentTunnel);
+    if (isDevEnv && slot.parentTunnel !== parentTunnel) {
+      console.warn(
+        `A11yTreeSlot "${id}": acquired under a different tunnel context ` +
+          `than the slot was created in; a standalone slot keeps rendering ` +
+          `into the original. Wrap the slot in A11yTreeSlotGroup or use ` +
+          `distinct slot ids per context.`,
+      );
+    }
     slot.refCount++;
     setVersion((v) => v + 1);
   }
@@ -180,7 +189,13 @@ export interface A11yTreeSlotProps {
   render: (content: ReactNode) => ReactNode;
 }
 
-/** Defines a slot in the a11y tree structure. */
+/**
+ * Defines a slot in the a11y tree structure.
+ *
+ * Grouped slots render into the enclosing A11yTreeSlotGroup. Standalone
+ * slots render into the tunnel context captured when the slot was first
+ * created, even if later items acquire it from elsewhere (dev warns).
+ */
 export function A11yTreeSlot({ id, render }: A11yTreeSlotProps) {
   const ctx = useContext(A11yTreeMultiplexerContext);
   const groupTunnel = useContext(A11ySlotGroupContext);

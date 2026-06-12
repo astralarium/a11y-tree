@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { memo, type ReactNode, useState } from "react";
+import { memo, type ReactNode, StrictMode, useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -14,6 +14,7 @@ import {
   A11yTreeMultiplexer,
   A11yTreeSlot,
   A11yTreeSlotGroup,
+  A11yTreeSlotIn,
 } from "./a11y-tree-multiplexer";
 import { fiberTunnel } from "./fiber-tunnel";
 
@@ -1164,6 +1165,338 @@ describe("A11yTreeSlotGroup nesting", () => {
     expect(slot).toContainElement(
       screen.getByRole("option", { name: "Item One" }),
     );
+  });
+});
+
+describe("A11yTreeSlot tunnel context warning", () => {
+  test("warns in dev when a slot is acquired under a different tunnel context", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(
+      <TestProvider>
+        <A11yTreeMultiplexer
+          items={[
+            {
+              slotId: "shared",
+              render: (
+                <A11yTreeElement>
+                  <div role="option">From items</div>
+                </A11yTreeElement>
+              ),
+            },
+          ]}
+        >
+          {/* Same slot id acquired from inside a container, whose
+              tunnel context differs from the items'. */}
+          <A11yTreeContainer
+            render={(content) => <div role="group">{content}</div>}
+          >
+            <A11yTreeSlotIn slotId="shared">
+              <A11yTreeElement>
+                <div role="option">Manual</div>
+              </A11yTreeElement>
+            </A11yTreeSlotIn>
+          </A11yTreeContainer>
+          <A11yTreeSlot
+            id="shared"
+            render={(content) => <div role="listbox">{content}</div>}
+          />
+        </A11yTreeMultiplexer>
+      </TestProvider>,
+    );
+
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining('A11yTreeSlot "shared"'),
+    );
+    consoleWarn.mockRestore();
+  });
+
+  test("does not warn when all items share the slot's tunnel context", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(
+      <TestProvider>
+        <A11yTreeMultiplexer
+          items={[
+            {
+              key: "a",
+              slotId: "shared",
+              render: (
+                <A11yTreeElement>
+                  <div role="option">A</div>
+                </A11yTreeElement>
+              ),
+            },
+            {
+              key: "b",
+              slotId: "shared",
+              render: (
+                <A11yTreeElement>
+                  <div role="option">B</div>
+                </A11yTreeElement>
+              ),
+            },
+          ]}
+        >
+          <A11yTreeSlot
+            id="shared"
+            render={(content) => <div role="listbox">{content}</div>}
+          />
+        </A11yTreeMultiplexer>
+      </TestProvider>,
+    );
+
+    expect(consoleWarn).not.toHaveBeenCalled();
+    consoleWarn.mockRestore();
+  });
+});
+
+describe("A11yTreeRenderer visibility warning", () => {
+  // jsdom has no ResizeObserver; capture the observe callback to fire
+  // it manually against a mocked layout.
+  function stubResizeObserver() {
+    let trigger: (() => void) | undefined;
+    class MockResizeObserver {
+      callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe() {
+        trigger = () => this.callback([], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    return () => trigger?.();
+  }
+
+  test("warns in dev when the default-class container is visibly rendered", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const triggerResize = stubResizeObserver();
+
+    const { container } = render(
+      <A11yTreeProvider>
+        <A11yTreeElement>
+          <button>Visible</button>
+        </A11yTreeElement>
+        <A11yTreeRenderer />
+      </A11yTreeProvider>,
+    );
+    const tree = container.querySelector(".sr-only")!;
+    vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+      width: 120,
+      height: 40,
+    } as DOMRect);
+
+    act(() => triggerResize());
+
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining("A11yTreeRenderer container is visible"),
+    );
+
+    vi.unstubAllGlobals();
+    consoleWarn.mockRestore();
+  });
+
+  test("does not warn when the tree container is hidden", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const triggerResize = stubResizeObserver();
+
+    render(
+      <A11yTreeProvider>
+        <A11yTreeElement>
+          <button>Hidden</button>
+        </A11yTreeElement>
+        <A11yTreeRenderer />
+      </A11yTreeProvider>,
+    );
+    // jsdom rects default to 0x0, matching a visually hidden container.
+    act(() => triggerResize());
+
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+    consoleWarn.mockRestore();
+  });
+
+  test("does not warn for a custom className, even when visible", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const triggerResize = stubResizeObserver();
+
+    const { container } = render(
+      <TestProvider>
+        <A11yTreeElement>
+          <button>Visible</button>
+        </A11yTreeElement>
+      </TestProvider>,
+    );
+    const tree = container.querySelector(".a11y-output")!;
+    vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+      width: 120,
+      height: 40,
+    } as DOMRect);
+
+    // Custom classNames are trusted: no observer is attached.
+    act(() => triggerResize());
+
+    expect(consoleWarn).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+    consoleWarn.mockRestore();
+  });
+});
+
+describe("StrictMode", () => {
+  test("tunnels content in order under StrictMode", () => {
+    render(
+      <StrictMode>
+        <TestProvider>
+          <A11yTreeElement>
+            <button>First</button>
+          </A11yTreeElement>
+          <A11yTreeElement>
+            <button>Second</button>
+          </A11yTreeElement>
+        </TestProvider>
+      </StrictMode>,
+    );
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "First",
+      "Second",
+    ]);
+  });
+
+  test("multiplexer routes, moves, and removes items under StrictMode", () => {
+    function TestComponent({
+      slot1Items,
+      slot2Items,
+    }: {
+      slot1Items: string[];
+      slot2Items: string[];
+    }) {
+      return (
+        <StrictMode>
+          <TestProvider>
+            <A11yTreeMultiplexer
+              items={[
+                ...slot1Items.map((item) => ({
+                  key: item,
+                  slotId: "slot-1",
+                  render: (
+                    <A11yTreeElement>
+                      <div role="option">{item}</div>
+                    </A11yTreeElement>
+                  ),
+                })),
+                ...slot2Items.map((item) => ({
+                  key: item,
+                  slotId: "slot-2",
+                  render: (
+                    <A11yTreeElement>
+                      <div role="option">{item}</div>
+                    </A11yTreeElement>
+                  ),
+                })),
+              ]}
+            >
+              <A11yTreeSlot
+                id="slot-1"
+                render={(content) => (
+                  <div role="listbox" aria-label="slot-1">
+                    {content}
+                  </div>
+                )}
+              />
+              <A11yTreeSlot
+                id="slot-2"
+                render={(content) => (
+                  <div role="listbox" aria-label="slot-2">
+                    {content}
+                  </div>
+                )}
+              />
+            </A11yTreeMultiplexer>
+          </TestProvider>
+        </StrictMode>
+      );
+    }
+
+    const { rerender } = render(
+      <TestComponent slot1Items={["A", "B"]} slot2Items={["C"]} />,
+    );
+    expect(screen.getByRole("listbox", { name: "slot-1" })).toContainElement(
+      screen.getByRole("option", { name: "A" }),
+    );
+    expect(screen.getByRole("listbox", { name: "slot-2" })).toContainElement(
+      screen.getByRole("option", { name: "C" }),
+    );
+
+    act(() => {
+      rerender(<TestComponent slot1Items={["A"]} slot2Items={["B", "C"]} />);
+    });
+    expect(
+      screen
+        .getByRole("listbox", { name: "slot-1" })
+        .querySelectorAll("[role='option']"),
+    ).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("listbox", { name: "slot-2" })
+        .querySelectorAll("[role='option']"),
+    ).toHaveLength(2);
+
+    act(() => {
+      rerender(<TestComponent slot1Items={[]} slot2Items={[]} />);
+    });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
+  test("grouped slots render under the group wrapper under StrictMode", () => {
+    render(
+      <StrictMode>
+        <TestProvider>
+          <A11yTreeMultiplexer
+            items={[
+              {
+                key: "card",
+                slotId: "hand",
+                render: (
+                  <A11yTreeElement>
+                    <div role="option">Card</div>
+                  </A11yTreeElement>
+                ),
+              },
+            ]}
+          >
+            <A11yTreeSlotGroup
+              render={(content) => (
+                <div role="group" aria-label="card-group">
+                  {content}
+                </div>
+              )}
+            >
+              <A11yTreeSlot
+                id="hand"
+                render={(content) => (
+                  <div role="listbox" aria-label="hand">
+                    {content}
+                  </div>
+                )}
+              />
+            </A11yTreeSlotGroup>
+          </A11yTreeMultiplexer>
+        </TestProvider>
+      </StrictMode>,
+    );
+
+    const group = screen.getByRole("group", { name: "card-group" });
+    expect(group).toContainElement(
+      screen.getByRole("listbox", { name: "hand" }),
+    );
+    expect(screen.getByRole("option", { name: "Card" })).toBeInTheDocument();
   });
 });
 

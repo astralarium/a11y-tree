@@ -19,11 +19,11 @@ export default defineConfig([
       eslintPluginPrettier,
     ],
     languageOptions: {
-      ecmaVersion: 2020,
       globals: globals.browser,
     },
   },
   {
+    files: ["**/*.{js,ts,tsx}"],
     plugins: {
       "simple-import-sort": simpleImportSort,
     },

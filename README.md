@@ -23,7 +23,7 @@ Requires React 19.2 or later.
   Root provider. Wrap your canvas (and `<A11yTreeRenderer>`) in it.
 
 - [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeRenderer.html):
-  Renders the accessibility tree into the DOM. Default class `"sr-only"` (ie. visually hidden in Tailwind. You must provide this class).
+  Renders the accessibility tree into the DOM. Default class `"sr-only"` (ie. visually hidden in Tailwind).
 
 - [`<A11yTreeElement>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeElement.html):
   Tunnels accessible DOM markup from a scene component into the tree.
