@@ -60,7 +60,12 @@ export interface FiberTunnel {
  * `refresh()`.
  */
 export function fiberTunnel(): FiberTunnel {
-  let items: readonly FiberTunnelItem[] = [];
+  // Map insertion order is registration order, the fallback ordering.
+  // Set on an existing id keeps its position, matching in-place update.
+  const itemsById = new Map<string, FiberTunnelItem>();
+  // Snapshot array for useSyncExternalStore: stable identity between
+  // changes, rebuilt lazily after each emit.
+  let snapshot: readonly FiberTunnelItem[] | null = null;
   const listeners = new Set<() => void>();
   // Per-tunnel counter, not useId: Ins may come from several React
   // roots, and useId is only unique per root.
@@ -72,30 +77,25 @@ export function fiberTunnel(): FiberTunnel {
   }
 
   function getItems() {
-    return items;
+    return (snapshot ??= [...itemsById.values()]);
   }
 
   function emit() {
+    snapshot = null;
     for (const listener of listeners) listener();
   }
 
   function upsert(id: string, children: ReactNode, fiber: Fiber | undefined) {
-    const index = items.findIndex((item) => item.id === id);
-    const next = [...items];
-    if (index === -1) next.push({ id, children, fiber });
-    else next[index] = { id, children, fiber };
-    items = next;
+    itemsById.set(id, { id, children, fiber });
     emit();
   }
 
   function remove(id: string) {
-    items = items.filter((item) => item.id !== id);
+    itemsById.delete(id);
     emit();
   }
 
   function refresh() {
-    // New array identity so useSyncExternalStore re-renders the Out.
-    items = [...items];
     emit();
   }
 
