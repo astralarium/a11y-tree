@@ -22,7 +22,7 @@ export function Frame({
       <header className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
         <h1 className="text-xl font-semibold">{title}</h1>
         {subtitle && <p className="text-muted-foreground">{subtitle}</p>}
-        {/* z-60 keeps the controls clickable above the a11y tree sheet (z-50) */}
+        {/* z-60 keeps the controls clickable above the a11y tree panel (z-50) */}
         <div className="relative z-60 ml-auto flex items-center gap-4">
           {controls}
           {sourceUrl && (

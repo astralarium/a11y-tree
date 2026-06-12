@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { FocusableCube } from "#components/focusable-cube";
 import {
-  TreeSheet,
+  TreePanel,
   TreeVisibilityToggle,
 } from "#components/tree-visibility-toggle";
 
@@ -60,7 +60,7 @@ function Focus() {
               />
             </A11yTreeContainer>
           </Canvas>
-          <TreeSheet open={showTree} onOpenChange={setShowTree} />
+          <TreePanel open={showTree} onOpenChange={setShowTree} />
         </div>
       </A11yTreeProvider>
     </Frame>

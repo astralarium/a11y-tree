@@ -31,7 +31,7 @@ export function TreeVisibilityToggle({
   );
 }
 
-interface TreeSheetProps {
+interface TreePanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -45,7 +45,7 @@ interface TreeSheetProps {
  * collapses to the bare screen-reader-only tree with no landmark,
  * heading, or off-screen content in the tab order.
  */
-export function TreeSheet({ open, onOpenChange }: TreeSheetProps) {
+export function TreePanel({ open, onOpenChange }: TreePanelProps) {
   const headingId = useId();
   const descriptionId = useId();
 
