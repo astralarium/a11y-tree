@@ -8,7 +8,7 @@ Keep comments tight and concise.
 Document API interfaces and expectations.
 Minimal section markers are okay.
 Only add extra comments if the code is not self-explanatory.
-DO NOT mention historical cruft or change history.
+DO NOT mention historical cruft or change logs
 
 ## live-cmd
 

@@ -156,6 +156,11 @@ const status = fiberTunnel();
 Unlike [tunnel-rat](https://github.com/pmndrs/tunnel-rat), `Out` content is ordered by each `In`'s position in the React tree, not registration order.
 Tree ordering requires a `FiberProvider` from [its-fine](https://github.com/pmndrs/its-fine) above the `In`s (`A11yTreeProvider` provides one).
 
+Also unlike tunnel-rat, content is not mirrored: only one `Out` is active at a time — the most recently mounted — and the others render nothing (dev warns).
+Unmounting the active `Out` hands back to the previous one.
+Hiding the active `Out` (Suspense/Activity) keeps its claim: React preserves its rendered content, and the tunnel renders nothing else until it is revealed or unmounted.
+To show content in different places at different times, keep a single `Out` mounted and move or restyle its container rather than mounting several `Out`s.
+
 ### Notes
 
 - Tunneled elements are ordered by their position in the React tree, so the a11y tree structure follows scene order.

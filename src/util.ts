@@ -22,6 +22,69 @@ function getFiberRoot(fiber: Fiber): FiberRootLike | null {
 }
 
 /**
+ * Whether the fiber is still part of its tree: reachable from its
+ * root's current generation, by identity or alternate. Walking up
+ * alone is unreliable — a deleted fiber's stale return chain can still
+ * reach the root. Hidden (Suspense/Activity) subtrees stay linked, so
+ * they count as live. O(tree size); reserve for cold paths.
+ */
+export function isFiberLive(fiber: Fiber): boolean {
+  const root = getFiberRoot(fiber);
+  const start = root?.current;
+  if (!start) return false;
+  const stack: Fiber[] = [start];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node === fiber || node.alternate === fiber) return true;
+    if (node.sibling) stack.push(node.sibling);
+    if (node.child) stack.push(node.child);
+  }
+  return false;
+}
+
+// Work tags of fibers that hide a preserved subtree. SuspenseComponent
+// holds non-null memoizedState while showing its fallback; the others
+// carry a `mode: "hidden"` prop while hiding their children.
+const SUSPENSE_TAG = 13;
+const HIDDEN_MODE_TAGS = new Set([
+  22, // OffscreenComponent (Suspense content wrapper)
+  23, // LegacyHiddenComponent
+  31, // ActivityComponent
+]);
+
+function hidesSubtree(fiber: Fiber): boolean {
+  // The walk may arrive via a stale generation whose ancestors did not
+  // re-render; the committed hide lives on either generation.
+  for (const f of [fiber, fiber.alternate]) {
+    if (!f) continue;
+    if (f.tag === SUSPENSE_TAG && f.memoizedState !== null) return true;
+    if (HIDDEN_MODE_TAGS.has(f.tag)) {
+      const props = (f.memoizedProps ?? f.pendingProps) as {
+        mode?: unknown;
+      } | null;
+      if (props?.mode === "hidden") return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether the fiber sits in a subtree React is hiding but preserving
+ * (Suspense fallback shown, Activity hidden). Distinguishes an effect
+ * teardown caused by hiding from a real unmount.
+ *
+ * May false-positive via a stale alternate that still records an old
+ * hide; callers must tolerate that (e.g. by checking isFiberLive once
+ * the commit ends).
+ */
+export function isFiberHidden(fiber: Fiber): boolean {
+  for (let f: Fiber | null = fiber; f; f = f.return) {
+    if (hidesSubtree(f)) return true;
+  }
+  return false;
+}
+
+/**
  * Assigns tree-order indices to the target fibers (and alternates) by
  * walking the live tree from `root`. A registered fiber may be a stale
  * generation (React reuses children on bailouts), so it is matched by

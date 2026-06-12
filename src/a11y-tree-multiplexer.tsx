@@ -81,7 +81,12 @@ export function A11yTreeMultiplexer({
     if (existing) return existing;
 
     const newSlot: SlotData = {
-      tunnel: fiberTunnel(),
+      tunnel: fiberTunnel({
+        multipleOutsWarning:
+          `Multiple A11yTreeSlots with id "${id}" are mounted; only the ` +
+          `most recently mounted one renders content. Use distinct slot ` +
+          `ids, or A11yTreeSlotGroup to scope ids per context`,
+      }),
       parentTunnel,
       refCount: 0,
     };

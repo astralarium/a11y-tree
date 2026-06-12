@@ -33,7 +33,14 @@ export interface A11yTreeProviderProps {
  * </A11yTreeProvider>
  */
 export function A11yTreeProvider({ children }: A11yTreeProviderProps) {
-  const [rootTunnel] = useState(() => fiberTunnel());
+  const [rootTunnel] = useState(() =>
+    fiberTunnel({
+      multipleOutsWarning:
+        "Multiple A11yTreeRenderers are mounted for the same a11y tree; " +
+        "only the most recently mounted one renders content. " +
+        "Keep a single renderer mounted and toggle its className instead",
+    }),
+  );
 
   return (
     <FiberProvider>
@@ -195,6 +202,18 @@ export interface A11yTreeRendererProps {
   fallback?: (props: A11yTreeErrorFallbackProps) => ReactNode;
 }
 
+/**
+ * Renders the a11y tree into the DOM, visually hidden by default.
+ *
+ * Mount one per tree: with several, only the most recently mounted
+ * renders content (dev warns). To show or hide the tree, toggle
+ * className rather than swapping renderers. A renderer hidden by
+ * Suspense/Activity keeps its claim until revealed or unmounted.
+ *
+ * The tree appears in a follow-up render after the renderer's mount
+ * commit: layout effects in that commit must not measure or focus the
+ * rendered tree.
+ */
 export function A11yTreeRenderer({
   className = "sr-only",
   fallback,

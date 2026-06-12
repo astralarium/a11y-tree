@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { FiberProvider } from "its-fine";
-import { memo, type ReactNode, StrictMode, useState } from "react";
+import { memo, type ReactNode, StrictMode, Suspense, useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -1683,5 +1683,356 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
 
     rerender(<TestComponent label="B" />);
     expect(screen.getByRole("option")).toHaveTextContent("B");
+  });
+});
+
+describe("A11yTreeRenderer election", () => {
+  function DualRenderers({ second }: { second: boolean }) {
+    return (
+      <A11yTreeProvider>
+        <A11yTreeElement>
+          <button>Tunneled</button>
+        </A11yTreeElement>
+        <A11yTreeRenderer className="out-a" />
+        {second && <A11yTreeRenderer className="out-b" />}
+      </A11yTreeProvider>
+    );
+  }
+
+  /** Single-shot Suspense gate: Gate suspends until resolve(). */
+  function createGate() {
+    let resolved = false;
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = () => {
+        resolved = true;
+        r();
+      };
+    });
+    function Gate({ suspended }: { suspended: boolean }) {
+      if (suspended && !resolved) throw promise;
+      return null;
+    }
+    return { Gate, resolve, promise };
+  }
+
+  test("most recently mounted renderer wins and dev warns once", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { container, rerender } = render(<DualRenderers second={false} />);
+    expect(container.querySelector(".out-a button")).toBeInTheDocument();
+
+    rerender(<DualRenderers second={true} />);
+    expect(container.querySelector(".out-a button")).toBeNull();
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+    expect(consoleWarn).toHaveBeenCalledTimes(1);
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining("Multiple A11yTreeRenderers"),
+    );
+    consoleWarn.mockRestore();
+  });
+
+  test("hands back to the surviving renderer on unmount", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { container, rerender } = render(<DualRenderers second={true} />);
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+
+    rerender(<DualRenderers second={false} />);
+    expect(container.querySelector(".out-a button")).toBeInTheDocument();
+    consoleWarn.mockRestore();
+  });
+
+  test("user refs survive an overlapping renderer swap", () => {
+    // Models an exit animation keeping the old renderer mounted
+    // past the new one's mount (e.g. a closing sheet).
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ref = { current: null as HTMLButtonElement | null };
+    function App({ stage }: { stage: "a" | "both" | "b" }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button ref={ref}>Tunneled</button>
+          </A11yTreeElement>
+          {stage !== "b" && <A11yTreeRenderer className="out-a" />}
+          {stage !== "a" && <A11yTreeRenderer className="out-b" />}
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(<App stage="a" />);
+    expect(ref.current).toBe(container.querySelector(".out-a button"));
+
+    rerender(<App stage="both" />);
+    rerender(<App stage="b" />);
+    expect(ref.current).not.toBeNull();
+    expect(ref.current).toBe(container.querySelector(".out-b button"));
+    consoleWarn.mockRestore();
+  });
+
+  test("elects one renderer per tunnel under StrictMode", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { container } = render(
+      <StrictMode>
+        <DualRenderers second={true} />
+      </StrictMode>,
+    );
+    expect(container.querySelector(".out-a button")).toBeNull();
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+    expect(consoleWarn).toHaveBeenCalledTimes(1);
+    consoleWarn.mockRestore();
+  });
+
+  test("plain refs survive two renderers mounting in the same commit", () => {
+    // With content already tunneled, both renderers must not render it
+    // on their mount commit: the demoted copy's unmount would null the
+    // user's ref into the surviving copy.
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ref = { current: null as HTMLButtonElement | null };
+    function App({ renderers }: { renderers: boolean }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button ref={ref}>Tunneled</button>
+          </A11yTreeElement>
+          {renderers && (
+            <>
+              <A11yTreeRenderer className="out-a" />
+              <A11yTreeRenderer className="out-b" />
+            </>
+          )}
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(<App renderers={false} />);
+    rerender(<App renderers={true} />);
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    expect(ref.current).not.toBeNull();
+    expect(ref.current).toBe(container.querySelector(".out-b button"));
+    consoleWarn.mockRestore();
+  });
+
+  test("a renderer revealed by Suspense does not steal the election", async () => {
+    // Suspense hide/reveal replays layout effects without remounting;
+    // the revealed renderer must resume its position, not win.
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gate = createGate();
+    function App({ suspended }: { suspended: boolean }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button>Tunneled</button>
+          </A11yTreeElement>
+          <Suspense fallback={null}>
+            <gate.Gate suspended={suspended} />
+            <A11yTreeRenderer className="out-a" />
+          </Suspense>
+          <A11yTreeRenderer className="out-b" />
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(<App suspended={false} />);
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+
+    rerender(<App suspended={true} />);
+    await act(async () => {
+      gate.resolve();
+      await gate.promise;
+    });
+    expect(container.querySelector(".out-a button")).toBeNull();
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+    consoleWarn.mockRestore();
+  });
+
+  test("a hidden renderer's content survives another renderer's visit", async () => {
+    // While the elected renderer is Suspense-hidden, a second renderer
+    // mounts and unmounts. Revealing the first must resume its
+    // preserved content in place, not remount it.
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gate = createGate();
+    const ref = { current: null as HTMLButtonElement | null };
+    function App({
+      suspended,
+      second,
+    }: {
+      suspended: boolean;
+      second: boolean;
+    }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button ref={ref}>Tunneled</button>
+          </A11yTreeElement>
+          <Suspense fallback={null}>
+            <gate.Gate suspended={suspended} />
+            <A11yTreeRenderer className="out-a" />
+          </Suspense>
+          {second && <A11yTreeRenderer className="out-b" />}
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(
+      <App suspended={false} second={false} />,
+    );
+    const original = container.querySelector(".out-a button");
+    expect(original).toBeInTheDocument();
+
+    rerender(<App suspended={true} second={false} />);
+    rerender(<App suspended={true} second={true} />);
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+    rerender(<App suspended={true} second={false} />);
+
+    await act(async () => {
+      gate.resolve();
+      await gate.promise;
+    });
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    expect(container.querySelector(".out-a button")).toBe(original);
+    expect(ref.current).toBe(original);
+    consoleWarn.mockRestore();
+  });
+
+  test("a hidden elected renderer keeps its claim over a mounted sibling", async () => {
+    // The elected renderer is Suspense-hidden while an older renderer
+    // stays mounted. The hidden claim holds: the sibling renders
+    // nothing, and the reveal resumes the preserved content in place.
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gate = createGate();
+    const ref = { current: null as HTMLButtonElement | null };
+    function App({ suspended }: { suspended: boolean }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button ref={ref}>Tunneled</button>
+          </A11yTreeElement>
+          <A11yTreeRenderer className="out-a" />
+          <Suspense fallback={null}>
+            <gate.Gate suspended={suspended} />
+            <A11yTreeRenderer className="out-b" />
+          </Suspense>
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(<App suspended={false} />);
+    const original = container.querySelector(".out-b button");
+    expect(original).toBeInTheDocument();
+
+    rerender(<App suspended={true} />);
+    // Only the hidden renderer's preserved copy exists; the sibling
+    // must not mount a duplicate.
+    expect(container.querySelector(".out-a button")).toBeNull();
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+
+    await act(async () => {
+      gate.resolve();
+      await gate.promise;
+    });
+    expect(container.querySelector(".out-b button")).toBe(original);
+    expect(ref.current).toBe(original);
+    consoleWarn.mockRestore();
+  });
+
+  test("renderers hidden together reveal without double-rendering", async () => {
+    // Both renderers hide under one boundary. On reveal only the
+    // elected one may render: a duplicate copy's unmount would null
+    // the user's ref into the surviving copy.
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gate = createGate();
+    const ref = { current: null as HTMLButtonElement | null };
+    function App({ suspended }: { suspended: boolean }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button ref={ref}>Tunneled</button>
+          </A11yTreeElement>
+          <Suspense fallback={null}>
+            <gate.Gate suspended={suspended} />
+            <A11yTreeRenderer className="out-a" />
+            <A11yTreeRenderer className="out-b" />
+          </Suspense>
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(<App suspended={false} />);
+    const original = container.querySelector(".out-b button");
+    expect(original).toBeInTheDocument();
+
+    rerender(<App suspended={true} />);
+    await act(async () => {
+      gate.resolve();
+      await gate.promise;
+    });
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    expect(container.querySelector(".out-b button")).toBe(original);
+    expect(ref.current).toBe(original);
+    consoleWarn.mockRestore();
+  });
+
+  test("unmounting a hidden elected renderer hands back to a sibling", () => {
+    // A hidden renderer never tears down again when its boundary
+    // unmounts; its dead claim must be dropped so the surviving
+    // renderer takes over on the next store update.
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gate = createGate();
+    function App({
+      stage,
+      label,
+    }: {
+      stage: "both" | "hidden" | "removed";
+      label: string;
+    }) {
+      return (
+        <A11yTreeProvider>
+          <A11yTreeElement>
+            <button>{label}</button>
+          </A11yTreeElement>
+          <A11yTreeRenderer className="out-a" />
+          {stage !== "removed" && (
+            <Suspense fallback={null}>
+              <gate.Gate suspended={stage === "hidden"} />
+              <A11yTreeRenderer className="out-b" />
+            </Suspense>
+          )}
+        </A11yTreeProvider>
+      );
+    }
+
+    const { container, rerender } = render(<App stage="both" label="One" />);
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+
+    rerender(<App stage="hidden" label="One" />);
+    rerender(<App stage="removed" label="One" />);
+    // A content update is the next store event; it prompts the prune.
+    rerender(<App stage="removed" label="Two" />);
+    expect(container.querySelector(".out-a button")).toHaveTextContent("Two");
+    consoleWarn.mockRestore();
+  });
+
+  test("direct tunnel.Out instances elect a single active Out", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tunnel = fiberTunnel();
+    const { container } = render(
+      <>
+        <tunnel.In>
+          <button>Tunneled</button>
+        </tunnel.In>
+        <div className="out-a">
+          <tunnel.Out />
+        </div>
+        <div className="out-b">
+          <tunnel.Out />
+        </div>
+      </>,
+    );
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    expect(container.querySelector(".out-b button")).toBeInTheDocument();
+    expect(consoleWarn).toHaveBeenCalledTimes(1);
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining("Multiple tunnel Outs"),
+    );
+    consoleWarn.mockRestore();
   });
 });
