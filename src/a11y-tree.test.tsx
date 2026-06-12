@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { FiberProvider } from "its-fine";
 import { memo, type ReactNode, StrictMode, useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
@@ -158,6 +159,38 @@ describe("fiberTunnel", () => {
 
     expect(screen.getByRole("button", { name: "RootOne" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "RootTwo" })).toBeInTheDocument();
+  });
+
+  test("refresh re-reads order after a keyed reorder of memoized Ins", () => {
+    const t = fiberTunnel();
+    const MemoIn = memo(function MemoIn({ label }: { label: string }) {
+      return (
+        <t.In>
+          <button>{label}</button>
+        </t.In>
+      );
+    });
+    function App({ order }: { order: string[] }) {
+      return (
+        <FiberProvider>
+          {order.map((label) => (
+            <MemoIn key={label} label={label} />
+          ))}
+          <t.Out />
+        </FiberProvider>
+      );
+    }
+
+    const { rerender } = render(<App order={["A", "B"]} />);
+    rerender(<App order={["B", "A"]} />);
+    // Moved Ins are memoized and never re-rendered; the Out rendered
+    // during the reorder pass still reads the previous committed tree.
+    let buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["A", "B"]);
+
+    act(() => t.refresh());
+    buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["B", "A"]);
   });
 });
 
@@ -899,6 +932,81 @@ describe("A11yTreeSlotGroup", () => {
     expect(group).toContainElement(
       screen.getByRole("listbox", { name: "deck" }),
     );
+  });
+
+  test("orders slots by tree position, not registration order", () => {
+    const handItem = {
+      key: "h",
+      slotId: "hand",
+      render: (
+        <A11yTreeElement>
+          <div role="option">Hand Card</div>
+        </A11yTreeElement>
+      ),
+    };
+    const deckItem = {
+      key: "d",
+      slotId: "deck",
+      render: (
+        <A11yTreeElement>
+          <div role="option">Deck Card</div>
+        </A11yTreeElement>
+      ),
+    };
+
+    function TestComponent({
+      items,
+    }: {
+      items: (typeof handItem | typeof deckItem)[];
+    }) {
+      return (
+        <TestProvider>
+          <A11yTreeMultiplexer items={items}>
+            <A11yTreeSlotGroup
+              render={(content) => (
+                <div role="group" aria-label="card-group">
+                  {content}
+                </div>
+              )}
+            >
+              <A11yTreeSlot
+                id="hand"
+                render={(content) => (
+                  <div role="listbox" aria-label="hand">
+                    {content}
+                  </div>
+                )}
+              />
+              <A11yTreeSlot
+                id="deck"
+                render={(content) => (
+                  <div role="listbox" aria-label="deck">
+                    {content}
+                  </div>
+                )}
+              />
+            </A11yTreeSlotGroup>
+          </A11yTreeMultiplexer>
+        </TestProvider>
+      );
+    }
+
+    // Deck's slot mounts and registers first; hand's slot appears only
+    // when its item arrives. Tree order must still win.
+    const { rerender } = render(<TestComponent items={[deckItem]} />);
+    expect(screen.getByRole("listbox", { name: "deck" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("listbox", { name: "hand" }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      rerender(<TestComponent items={[deckItem, handItem]} />);
+    });
+
+    const listboxes = screen.getAllByRole("listbox");
+    expect(
+      listboxes.map((listbox) => listbox.getAttribute("aria-label")),
+    ).toEqual(["hand", "deck"]);
   });
 
   test("handles dynamic slots within a group", () => {
