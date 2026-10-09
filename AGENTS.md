@@ -52,9 +52,6 @@ After moving a declaration, update every consumer and delete the old export path
 Build the full surface and avoid stubs.
 Out-of-scope = plain open item in plan doc.
 
-Pre-alpha: no persisted-data compat (migrations, fallbacks, aliases).
-In-flight matches wiped at deploy.
-
 ## Tests
 
 Test names are spec sentences: declarative present tense,
