@@ -7,12 +7,12 @@ Components declare accessible markup wherever they live in the scene graph; it t
 
 [Docs](https://astralarium.github.io/a11y-tree/)
 | [Github](https://github.com/astralarium/a11y-tree)
-| [NPM](https://www.npmjs.com/package/@astralarium/a11y-tree)
+| [NPM](https://www.npmjs.com/package/a11y-tree)
 
 ## Installation
 
 ```bash
-npm i @astralarium/a11y-tree fiber-tunnel its-fine
+npm i a11y-tree fiber-tunnel its-fine
 ```
 
 Requires React 19.2 or later.
