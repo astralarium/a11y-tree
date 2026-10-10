@@ -12,7 +12,7 @@ Components declare accessible markup wherever they live in the scene graph; it t
 ## Installation
 
 ```bash
-npm i @astralarium/a11y-tree its-fine
+npm i @astralarium/a11y-tree fiber-tunnel its-fine
 ```
 
 Requires React 19.2 or later.
@@ -24,6 +24,11 @@ Requires React 19.2 or later.
 
 - [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeRenderer.html):
   Renders the accessibility tree into the DOM. Default class `"sr-only"` (ie. visually hidden in Tailwind).
+  Mount one per tree; to show or hide the tree, toggle its `className`.
+
+- [`<FiberAnchor>`](https://astralarium.github.io/fiber-tunnel/docs/functions/FiberAnchor.html)
+  (from [fiber-tunnel](https://github.com/astralarium/fiber-tunnel)):
+  Wrap each nested React root that holds a11y content (an r3f `<Canvas>`, a second canvas).
 
 - [`<A11yTreeElement>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeElement.html):
   Tunnels accessible DOM markup from a scene component into the tree.
@@ -33,21 +38,23 @@ Requires React 19.2 or later.
 
 ```tsx
 <A11yTreeProvider>
-  <Canvas fallback={<A11yTreeRenderer />}>
-    <A11yTreeContainer
-      render={(content) => (
-        <div role="listbox" aria-label="Hand">
-          {content}
-        </div>
-      )}
-    >
-      <Card3D>
-        <A11yTreeElement>
-          <div role="option">Ace of Spades</div>
-        </A11yTreeElement>
-      </Card3D>
-    </A11yTreeContainer>
-  </Canvas>
+  <FiberAnchor>
+    <Canvas fallback={<A11yTreeRenderer />}>
+      <A11yTreeContainer
+        render={(content) => (
+          <div role="listbox" aria-label="Hand">
+            {content}
+          </div>
+        )}
+      >
+        <Card3D>
+          <A11yTreeElement>
+            <div role="option">Ace of Spades</div>
+          </A11yTreeElement>
+        </Card3D>
+      </A11yTreeContainer>
+    </Canvas>
+  </FiberAnchor>
 </A11yTreeProvider>
 ```
 
@@ -137,35 +144,15 @@ to portal it out of the visually hidden tree container:
 
 ### Tunnels
 
-The tunnel primitive powering the tree is exported for standalone use:
-
-```tsx
-import { fiberTunnel } from "@astralarium/a11y-tree";
-
-const status = fiberTunnel();
-
-// Anywhere in your app — even in a different React root:
-<status.In>
-  <span>Saving…</span>
-</status.In>;
-
-// Content from every In renders here:
-<status.Out />;
-```
-
-Unlike [tunnel-rat](https://github.com/pmndrs/tunnel-rat), `Out` content is ordered by each `In`'s position in the React tree, not registration order.
-Tree ordering requires a `FiberProvider` from [its-fine](https://github.com/pmndrs/its-fine) above the `In`s (`A11yTreeProvider` provides one).
-
-Also unlike tunnel-rat, content is not mirrored: only one `Out` is active at a time — the most recently mounted — and the others render nothing (dev warns).
-Unmounting the active `Out` hands back to the previous one.
-Hiding the active `Out` (Suspense/Activity) keeps its claim: React preserves its rendered content, and the tunnel renders nothing else until it is revealed or unmounted.
-To show content in different places at different times, keep a single `Out` mounted and move or restyle its container rather than mounting several `Out`s.
+The tree is built on [fiber-tunnel](https://github.com/astralarium/fiber-tunnel), which orders content by React tree position.
 
 ### Notes
 
 - Tunneled elements are ordered by their position in the React tree, so the a11y tree structure follows scene order.
 - Tunnel updates re-derive order by walking the React tree, and an `A11yTreeElement` updates whenever its parent re-renders.
   Keep elements out of components that re-render every frame, or route them through the multiplexer as memoized items.
+- A canvas hidden by `<Activity>` keeps a11y content unless
+  the host bridges Activity (its-fine 2.1+ `useActivityBridge`).
 - Context from the scene tree is bridged into tunneled markup via [its-fine](https://github.com/pmndrs/its-fine),
   so providers above an `A11yTreeElement` are visible to its children.
 

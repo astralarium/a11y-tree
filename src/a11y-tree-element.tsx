@@ -1,7 +1,7 @@
+import { fiberTunnel } from "fiber-tunnel";
 import { useContextBridge } from "its-fine";
 import { type ReactNode, useState } from "react";
 
-import { fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 export interface A11yTreeElementProps {
@@ -19,7 +19,8 @@ export function A11yTreeElement({ children }: A11yTreeElementProps) {
 export interface A11yTreeContainerProps {
   /** Canvas children that may contain nested a11y elements to be wrapped. */
   children: ReactNode;
-  /** Wraps the subtree content, e.g. `(content) => <div role="group">{content}</div>`. */
+  /** Wraps the subtree content, e.g. `(content) => <div role="group">{content}</div>`.
+   * Place `content` once. */
   render: (content: ReactNode) => ReactNode;
 }
 

@@ -1,3 +1,4 @@
+import { type FiberTunnel, fiberTunnel } from "fiber-tunnel";
 import { useContextBridge } from "its-fine";
 import {
   createContext,
@@ -6,14 +7,13 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
 
 import { isDevEnv } from "./env";
-import { type FiberTunnel, fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
-import { useIsomorphicLayoutEffect } from "./util";
 
 interface SlotData {
   tunnel: FiberTunnel;
@@ -81,12 +81,7 @@ export function A11yTreeMultiplexer({
     if (existing) return existing;
 
     const newSlot: SlotData = {
-      tunnel: fiberTunnel({
-        multipleOutsWarning:
-          `Multiple A11yTreeSlots with id "${id}" are mounted; only the ` +
-          `most recently mounted one renders content. Use distinct slot ` +
-          `ids, or A11yTreeSlotGroup to scope ids per context`,
-      }),
+      tunnel: fiberTunnel(),
       parentTunnel,
       refCount: 0,
     };
@@ -127,7 +122,7 @@ export function A11yTreeMultiplexer({
   // refresh slot tunnels when key order changes. Any other items change
   // updates the tunnels via the affected Ins.
   const itemOrderFingerprint = JSON.stringify(items.map(itemKey));
-  useIsomorphicLayoutEffect(() => {
+  useLayoutEffect(() => {
     for (const slot of slotsRef.current.values()) {
       slot.tunnel.refresh();
     }
@@ -166,7 +161,8 @@ export function A11yTreeMultiplexer({
 export interface A11yTreeSlotGroupProps {
   /** Slots within this group. */
   children: ReactNode;
-  /** Wraps the group content, e.g. `(content) => <NavigableRoot>{content}</NavigableRoot>`. */
+  /** Wraps the group content, e.g. `(content) => <NavigableRoot>{content}</NavigableRoot>`.
+   * Place `content` once. */
   render: (content: ReactNode) => ReactNode;
 }
 
@@ -195,9 +191,11 @@ export function A11yTreeSlotGroup({
 }
 
 export interface A11yTreeSlotProps {
-  /** Unique identifier for this slot. */
+  /** Unique identifier for this slot. Slots sharing an id each render
+   * a copy of its content. */
   id: string;
-  /** Wraps the slot content, e.g. `(content) => <NavigableList>{content}</NavigableList>`. */
+  /** Wraps the slot content, e.g. `(content) => <NavigableList>{content}</NavigableList>`.
+   * Place `content` once. */
   render: (content: ReactNode) => ReactNode;
 }
 

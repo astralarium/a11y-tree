@@ -1,6 +1,7 @@
 import { A11yTreeContainer, A11yTreeProvider } from "@astralarium/a11y-tree";
 import { Canvas } from "@react-three/fiber";
 import { createFileRoute } from "@tanstack/react-router";
+import { FiberAnchor } from "fiber-tunnel";
 import { useState } from "react";
 
 import { FocusableCube } from "#components/focusable-cube";
@@ -30,32 +31,34 @@ function ErrorBoundary() {
     >
       <A11yTreeProvider>
         <div className="relative min-h-0 flex-1">
-          <Canvas camera={{ position: [0, 0, 7] }}>
-            <ambientLight intensity={0.5} />
-            <directionalLight position={[5, 5, 5]} intensity={2} />
-            <A11yTreeContainer
-              render={(content) => (
-                <div
-                  role="group"
-                  aria-label="Cubes"
-                  className="flex flex-col gap-2"
-                >
-                  {content}
-                </div>
-              )}
-            >
-              <FocusableCube
-                label="Stable cube"
-                position={[-1.8, 0, 0]}
-                rotation={[0.4, 0.6, 0]}
-              />
-              <UnstableCube
-                label="Unstable cube"
-                position={[1.8, 0, 0]}
-                rotation={[-0.3, 0.3, -0.1]}
-              />
-            </A11yTreeContainer>
-          </Canvas>
+          <FiberAnchor>
+            <Canvas camera={{ position: [0, 0, 7] }}>
+              <ambientLight intensity={0.5} />
+              <directionalLight position={[5, 5, 5]} intensity={2} />
+              <A11yTreeContainer
+                render={(content) => (
+                  <div
+                    role="group"
+                    aria-label="Cubes"
+                    className="flex flex-col gap-2"
+                  >
+                    {content}
+                  </div>
+                )}
+              >
+                <FocusableCube
+                  label="Stable cube"
+                  position={[-1.8, 0, 0]}
+                  rotation={[0.4, 0.6, 0]}
+                />
+                <UnstableCube
+                  label="Unstable cube"
+                  position={[1.8, 0, 0]}
+                  rotation={[-0.3, 0.3, -0.1]}
+                />
+              </A11yTreeContainer>
+            </Canvas>
+          </FiberAnchor>
           <TreePanel open={showTree} onOpenChange={setShowTree} />
         </div>
       </A11yTreeProvider>

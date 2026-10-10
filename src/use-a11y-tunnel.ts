@@ -1,6 +1,5 @@
+import type { FiberTunnel } from "fiber-tunnel";
 import { createContext, useContext } from "react";
-
-import type { FiberTunnel } from "./fiber-tunnel";
 
 export interface A11yTunnelContextValue {
   /** The tunnel instance for this subtree. */

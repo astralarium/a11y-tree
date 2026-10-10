@@ -29,8 +29,6 @@ describe("SSR", () => {
     // Tunnel content registers via effects, which do not run on the
     // server; the container stays empty until hydration.
     expect(html).not.toContain("Tunneled");
-    // useIsomorphicLayoutEffect must not trip React's
-    // "useLayoutEffect does nothing on the server" warning.
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });

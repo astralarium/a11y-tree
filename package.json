@@ -1,6 +1,6 @@
 {
   "name": "@astralarium/a11y-tree",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "packageManager": "pnpm@11.4.0",
   "description": "Accessibility for any React component",
@@ -45,6 +45,7 @@
     }
   },
   "peerDependencies": {
+    "fiber-tunnel": "^0.1.0",
     "its-fine": "^2.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
@@ -77,6 +78,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.26",
     "eslint-plugin-simple-import-sort": "^12.1.1",
+    "fiber-tunnel": "^0.1.0",
     "globals": "^17.0.0",
     "its-fine": "^2.0.0",
     "jsdom": "^29.0.0",

@@ -1,3 +1,4 @@
+import { fiberTunnel } from "fiber-tunnel";
 import { FiberProvider } from "its-fine";
 import {
   Component,
@@ -12,7 +13,6 @@ import {
 import { createPortal } from "react-dom";
 
 import { isDevEnv } from "./env";
-import { fiberTunnel } from "./fiber-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 export interface A11yTreeProviderProps {
@@ -25,22 +25,21 @@ export interface A11yTreeProviderProps {
  * Wrap canvas in `A11yTreeProvider` and add `A11yTreeRenderer`
  * to the canvas fallback.
  *
+ * Wrap each nested React root holding a11y content (e.g. an r3f
+ * `<Canvas>`) in fiber-tunnel's `FiberAnchor`, so its content reads at
+ * the root's place. Unanchored roots have no defined order (dev warns).
+ *
  * @example
  * <A11yTreeProvider>
- *   <Canvas fallback={<A11yTreeRenderer />}>
- *     {children}
- *   </Canvas>
+ *   <FiberAnchor>
+ *     <Canvas fallback={<A11yTreeRenderer />}>
+ *       {children}
+ *     </Canvas>
+ *   </FiberAnchor>
  * </A11yTreeProvider>
  */
 export function A11yTreeProvider({ children }: A11yTreeProviderProps) {
-  const [rootTunnel] = useState(() =>
-    fiberTunnel({
-      multipleOutsWarning:
-        "Multiple A11yTreeRenderers are mounted for the same a11y tree; " +
-        "only the most recently mounted one renders content. " +
-        "Keep a single renderer mounted and toggle its className instead",
-    }),
-  );
+  const [rootTunnel] = useState(() => fiberTunnel());
 
   return (
     <FiberProvider>
@@ -205,14 +204,12 @@ export interface A11yTreeRendererProps {
 /**
  * Renders the a11y tree into the DOM, visually hidden by default.
  *
- * Mount one per tree: with several, only the most recently mounted
- * renders content (dev warns). To show or hide the tree, toggle
- * className rather than swapping renderers. A renderer hidden by
- * Suspense/Activity keeps its claim until revealed or unmounted.
+ * Mount one per tree: each extra renderer renders its own copy (dev
+ * errors), and a copy's unmount sets refs into the tree to `null`. To
+ * show or hide the tree, toggle the renderer's className.
  *
- * The tree appears in a follow-up render after the renderer's mount
- * commit: layout effects in that commit must not measure or focus the
- * rendered tree.
+ * Content tunneled before the renderer mounts renders in its mount
+ * commit; content mounting alongside it appears one commit later.
  */
 export function A11yTreeRenderer({
   className = "sr-only",

@@ -1,6 +1,7 @@
 import { A11yTreeContainer, A11yTreeProvider } from "@astralarium/a11y-tree";
 import { Canvas } from "@react-three/fiber";
 import { createFileRoute } from "@tanstack/react-router";
+import { FiberAnchor } from "fiber-tunnel";
 import { useState } from "react";
 
 import { FocusableCube } from "#components/focusable-cube";
@@ -29,37 +30,39 @@ function Focus() {
     >
       <A11yTreeProvider>
         <div className="relative min-h-0 flex-1">
-          <Canvas camera={{ position: [0, 0, 7] }}>
-            <ambientLight intensity={0.5} />
-            <directionalLight position={[5, 5, 5]} intensity={2} />
-            <A11yTreeContainer
-              render={(content) => (
-                <div
-                  role="group"
-                  aria-label="Cubes"
-                  className="flex flex-col gap-2"
-                >
-                  {content}
-                </div>
-              )}
-            >
-              <FocusableCube
-                label="Left cube"
-                position={[-2.6, 0.2, 0]}
-                rotation={[0.4, 0.6, 0]}
-              />
-              <FocusableCube
-                label="Middle cube"
-                position={[0, -0.3, 0]}
-                rotation={[0.2, -0.4, 0.1]}
-              />
-              <FocusableCube
-                label="Right cube"
-                position={[2.6, 0.3, 0]}
-                rotation={[-0.3, 0.3, -0.1]}
-              />
-            </A11yTreeContainer>
-          </Canvas>
+          <FiberAnchor>
+            <Canvas camera={{ position: [0, 0, 7] }}>
+              <ambientLight intensity={0.5} />
+              <directionalLight position={[5, 5, 5]} intensity={2} />
+              <A11yTreeContainer
+                render={(content) => (
+                  <div
+                    role="group"
+                    aria-label="Cubes"
+                    className="flex flex-col gap-2"
+                  >
+                    {content}
+                  </div>
+                )}
+              >
+                <FocusableCube
+                  label="Left cube"
+                  position={[-2.6, 0.2, 0]}
+                  rotation={[0.4, 0.6, 0]}
+                />
+                <FocusableCube
+                  label="Middle cube"
+                  position={[0, -0.3, 0]}
+                  rotation={[0.2, -0.4, 0.1]}
+                />
+                <FocusableCube
+                  label="Right cube"
+                  position={[2.6, 0.3, 0]}
+                  rotation={[-0.3, 0.3, -0.1]}
+                />
+              </A11yTreeContainer>
+            </Canvas>
+          </FiberAnchor>
           <TreePanel open={showTree} onOpenChange={setShowTree} />
         </div>
       </A11yTreeProvider>

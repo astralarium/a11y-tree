@@ -1,6 +1,7 @@
 import { A11yTreeProvider, A11yTreeRenderer } from "@astralarium/a11y-tree";
 import { Canvas } from "@react-three/fiber";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { FiberAnchor } from "fiber-tunnel";
 import type { PropsWithChildren } from "react";
 
 import { FocusableCube } from "#components/focusable-cube";
@@ -43,28 +44,30 @@ function LandingPageClient() {
     <LandingPage>
       <A11yTreeProvider>
         <div className="relative h-full">
-          <Canvas camera={{ position: [0, 0, 7] }}>
-            <ambientLight intensity={0.5} />
-            <directionalLight position={[5, 5, 5]} intensity={2} />
-            <FocusableCube
-              label="First cube"
-              position={[-2.7, 0.6, -0.5]}
-              rotation={[0.5, 0.7, 0.1]}
-              size={1.7}
-            />
-            <FocusableCube
-              label="Second cube"
-              position={[-0.2, -0.4, 0]}
-              rotation={[0.3, -0.5, 0.2]}
-              size={2}
-            />
-            <FocusableCube
-              label="Third cube"
-              position={[2.6, 0.5, -0.8]}
-              rotation={[-0.4, 0.4, -0.2]}
-              size={1.4}
-            />
-          </Canvas>
+          <FiberAnchor>
+            <Canvas camera={{ position: [0, 0, 7] }}>
+              <ambientLight intensity={0.5} />
+              <directionalLight position={[5, 5, 5]} intensity={2} />
+              <FocusableCube
+                label="First cube"
+                position={[-2.7, 0.6, -0.5]}
+                rotation={[0.5, 0.7, 0.1]}
+                size={1.7}
+              />
+              <FocusableCube
+                label="Second cube"
+                position={[-0.2, -0.4, 0]}
+                rotation={[0.3, -0.5, 0.2]}
+                size={2}
+              />
+              <FocusableCube
+                label="Third cube"
+                position={[2.6, 0.5, -0.8]}
+                rotation={[-0.4, 0.4, -0.2]}
+                size={1.4}
+              />
+            </Canvas>
+          </FiberAnchor>
           <A11yTreeRenderer />
         </div>
       </A11yTreeProvider>
