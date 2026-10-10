@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { useContextBridge } from "its-fine";
 import { memo, type ReactNode, StrictMode, useState } from "react";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, type Mock, test, vi } from "vitest";
 
 import {
   A11yTreeFallbackRenderer,
@@ -1263,6 +1264,64 @@ describe("A11yTreeSlot tunnel context warning", () => {
     consoleWarn.mockRestore();
   });
 
+  test("a slot remounted under a new container renders into it without a warning", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Remounts the container; the multiplexer stays put.
+    function Toggle() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button onClick={() => setOpen((o) => !o)}>toggle</button>
+          {open && (
+            <A11yTreeContainer
+              render={(content) => (
+                <div role="group" aria-label="container">
+                  {content}
+                </div>
+              )}
+            >
+              <A11yTreeSlotIn slotId="s">
+                <A11yTreeElement>
+                  <div role="option">Manual</div>
+                </A11yTreeElement>
+              </A11yTreeSlotIn>
+            </A11yTreeContainer>
+          )}
+        </>
+      );
+    }
+
+    render(
+      <TestProvider>
+        <A11yTreeMultiplexer items={[]}>
+          <Toggle />
+          <A11yTreeSlot
+            id="s"
+            render={(content) => (
+              <div role="listbox" aria-label="s">
+                {content}
+              </div>
+            )}
+          />
+        </A11yTreeMultiplexer>
+      </TestProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    expect(
+      screen.queryByRole("listbox", { name: "s" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    expect(
+      within(screen.getByRole("group", { name: "container" })).getByRole(
+        "listbox",
+        { name: "s" },
+      ),
+    ).toHaveTextContent("Manual");
+    expect(consoleWarn).not.toHaveBeenCalled();
+    consoleWarn.mockRestore();
+  });
+
   test("does not warn when all items share the slot's tunnel context", () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -1629,6 +1688,166 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
     expect(screen.getByRole("option")).toHaveTextContent("B");
   });
 });
+
+describe.each([
+  { mode: "", wrap: (node: ReactNode) => node, rendersPerUpdate: 1 },
+  {
+    mode: " under StrictMode",
+    wrap: (node: ReactNode) => <StrictMode>{node}</StrictMode>,
+    rendersPerUpdate: 2,
+  },
+])(
+  "A11yTreeMultiplexer render isolation$mode",
+  ({ wrap, rendersPerUpdate }) => {
+    type OnRender = (name: string) => void;
+
+    // Bridges every ancestor context and reports each render.
+    function BridgeProbe({
+      name,
+      onRender,
+      children,
+    }: {
+      name: string;
+      onRender: OnRender;
+      children?: ReactNode;
+    }) {
+      "use no memo";
+      useContextBridge();
+      onRender(name);
+      return children;
+    }
+
+    function rendersOf(onRender: Mock<OnRender>, name: string) {
+      return onRender.mock.calls.filter(([id]) => id === name).length;
+    }
+
+    // Stable elements: only context changes reach the probes.
+    function setup(initial: [key: string, slotId: string][]) {
+      const onRender = vi.fn<OnRender>();
+      const renders: Record<string, ReactNode> = Object.fromEntries(
+        ["X", "Y"].map((name) => [
+          name,
+          <BridgeProbe name={name} onRender={onRender}>
+            <A11yTreeElement>
+              <div role="option">{name}</div>
+            </A11yTreeElement>
+          </BridgeProbe>,
+        ]),
+      );
+      const children = (
+        <>
+          <BridgeProbe name="outside" onRender={onRender} />
+          {["a", "b"].map((id) => (
+            <A11yTreeSlot
+              key={id}
+              id={id}
+              render={(content) => (
+                <div role="listbox" aria-label={id}>
+                  <BridgeProbe name={`slot-${id}`} onRender={onRender} />
+                  {content}
+                </div>
+              )}
+            />
+          ))}
+        </>
+      );
+      function TestComponent({
+        placement,
+      }: {
+        placement: [key: string, slotId: string][];
+      }) {
+        return wrap(
+          <TestProvider>
+            <A11yTreeMultiplexer
+              items={placement.map(([key, slotId]) => ({
+                key,
+                slotId,
+                render: renders[key],
+              }))}
+            >
+              {children}
+            </A11yTreeMultiplexer>
+          </TestProvider>,
+        );
+      }
+      const { rerender } = render(<TestComponent placement={initial} />);
+      return {
+        onRender,
+        update: (placement: [key: string, slotId: string][]) =>
+          act(() => rerender(<TestComponent placement={placement} />)),
+      };
+    }
+
+    test("an unmoved item renders once across another item's move between slots", () => {
+      const { onRender, update } = setup([
+        ["X", "a"],
+        ["Y", "a"],
+      ]);
+      const before = rendersOf(onRender, "Y");
+
+      update([
+        ["X", "b"],
+        ["Y", "a"],
+      ]);
+      expect(screen.getByRole("listbox", { name: "b" })).toHaveTextContent("X");
+      expect(rendersOf(onRender, "Y")).toBe(before);
+    });
+
+    test("a moved item renders once per move", () => {
+      const { onRender, update } = setup([["X", "a"]]);
+      const before = rendersOf(onRender, "X");
+
+      update([["X", "b"]]);
+      expect(screen.getByRole("listbox", { name: "b" })).toHaveTextContent("X");
+      expect(rendersOf(onRender, "X")).toBe(before + rendersPerUpdate);
+    });
+
+    test("a reorder within a slot renders no item", () => {
+      const { onRender, update } = setup([
+        ["X", "a"],
+        ["Y", "a"],
+      ]);
+      const before = onRender.mock.calls.length;
+
+      update([
+        ["Y", "a"],
+        ["X", "a"],
+      ]);
+      expect(
+        screen.getAllByRole("option").map((option) => option.textContent),
+      ).toEqual(["Y", "X"]);
+      expect(onRender.mock.calls.length).toBe(before);
+    });
+
+    test("multiplexer children outside slots render once across slot acquire and release", () => {
+      const { onRender, update } = setup([["X", "a"]]);
+      const before = rendersOf(onRender, "outside");
+
+      update([
+        ["X", "a"],
+        ["Y", "b"],
+      ]);
+      update([["X", "a"]]);
+      expect(
+        screen.queryByRole("listbox", { name: "b" }),
+      ).not.toBeInTheDocument();
+      expect(rendersOf(onRender, "outside")).toBe(before);
+    });
+
+    test("a slot's content renders once while another slot gains its first item", () => {
+      const { onRender, update } = setup([["X", "a"]]);
+      const before = rendersOf(onRender, "slot-a");
+
+      update([
+        ["X", "a"],
+        ["Y", "b"],
+      ]);
+      expect(screen.getByRole("listbox", { name: "b" })).toHaveTextContent("Y");
+      expect(rendersOf(onRender, "slot-a")).toBe(before);
+      expect(rendersOf(onRender, "slot-b")).toBe(rendersPerUpdate);
+    });
+  },
+);
 
 describe("A11yTreeRenderer multiple renderers", () => {
   test("each renderer renders a copy and a second one logs a dev error", () => {

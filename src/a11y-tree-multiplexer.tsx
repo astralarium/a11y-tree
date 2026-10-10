@@ -10,6 +10,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import { isDevEnv } from "./env";
@@ -17,25 +18,27 @@ import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 interface SlotData {
   tunnel: FiberTunnel;
+  /** Tunnel context of the latest first holder (refCount 0 → 1). */
   parentTunnel: FiberTunnel;
   refCount: number;
 }
 
+/** Slot registry, stable for the multiplexer's lifetime. */
 interface A11yTreeMultiplexerContextValue {
   getOrCreateSlot: (id: string, parentTunnel: FiberTunnel) => SlotData;
   acquireSlot: (id: string, parentTunnel: FiberTunnel) => void;
   releaseSlot: (id: string) => void;
-  getSlot: (id: string) => SlotData | undefined;
-  /**
-   * Bumped when a slot may appear or disappear. Never read, but keeps
-   * the compiler-memoized context value fresh so consumers re-render
-   * on refCount changes (slot state lives in a ref).
-   */
-  version: number;
+  /** Slot `id` while refCount > 0. */
+  getHeldSlot: (id: string) => SlotData | undefined;
+  /** Calls `onChange` when slot `id` crosses refCount 0 ↔ 1.
+   * Returns unsubscribe. */
+  subscribeSlot: (id: string, onChange: () => void) => () => void;
 }
 
 const A11yTreeMultiplexerContext =
   createContext<A11yTreeMultiplexerContextValue | null>(null);
+
+function noop() {}
 
 /** The enclosing group's tunnel, unaffected by A11yTunnelContext
  * overrides nested between the group and its slots. */
@@ -74,7 +77,11 @@ export function A11yTreeMultiplexer({
   children,
 }: A11yTreeMultiplexerProps) {
   const slotsRef = useRef(new Map<string, SlotData>());
-  const [version, setVersion] = useState(0);
+  const listenersRef = useRef(new Map<string, Set<() => void>>());
+
+  function notifySlot(id: string) {
+    for (const onChange of listenersRef.current.get(id) ?? []) onChange();
+  }
 
   function getOrCreateSlot(id: string, parentTunnel: FiberTunnel): SlotData {
     const existing = slotsRef.current.get(id);
@@ -91,31 +98,46 @@ export function A11yTreeMultiplexer({
 
   function acquireSlot(id: string, parentTunnel: FiberTunnel) {
     const slot = getOrCreateSlot(id, parentTunnel);
-    if (isDevEnv && slot.parentTunnel !== parentTunnel) {
+    if (slot.refCount === 0) {
+      slot.parentTunnel = parentTunnel;
+    } else if (isDevEnv && slot.parentTunnel !== parentTunnel) {
       console.warn(
         `A11yTreeSlot "${id}": acquired under a different tunnel context ` +
-          `than the slot was created in; a standalone slot keeps rendering ` +
-          `into the original. Wrap the slot in A11yTreeSlotGroup or use ` +
-          `distinct slot ids per context.`,
+          `than the slot's first holder; a standalone slot keeps rendering ` +
+          `into the first holder's. Wrap the slot in A11yTreeSlotGroup or ` +
+          `use distinct slot ids per context.`,
       );
     }
     slot.refCount++;
-    setVersion((v) => v + 1);
+    if (slot.refCount === 1) notifySlot(id);
   }
 
+  // Slot and tunnel outlive refCount 0 until the sweep below, for
+  // re-acquires in the same commit (StrictMode replay, item swap).
   function releaseSlot(id: string) {
     const slot = slotsRef.current.get(id);
     if (!slot) return;
 
     slot.refCount--;
-    if (slot.refCount <= 0) {
-      slotsRef.current.delete(id);
-      setVersion((v) => v + 1);
-    }
+    if (slot.refCount === 0) notifySlot(id);
   }
 
-  function getSlot(id: string) {
-    return slotsRef.current.get(id);
+  function getHeldSlot(id: string) {
+    const slot = slotsRef.current.get(id);
+    return slot && slot.refCount > 0 ? slot : undefined;
+  }
+
+  function subscribeSlot(id: string, onChange: () => void) {
+    let listeners = listenersRef.current.get(id);
+    if (!listeners) {
+      listeners = new Set();
+      listenersRef.current.set(id, listeners);
+    }
+    listeners.add(onChange);
+    return () => {
+      listeners.delete(onChange);
+      if (listeners.size === 0) listenersRef.current.delete(id);
+    };
   }
 
   // Keyed reorders of memoized items never re-render the moved Ins, so
@@ -128,10 +150,8 @@ export function A11yTreeMultiplexer({
     }
   }, [itemOrderFingerprint]);
 
-  // Drop slots created during discarded renders. Must be a passive
-  // effect: child SlotIn acquire effects run first, so every slot from
-  // a committed render holds a ref by now; survivors at refCount 0 were
-  // never committed. No version bump — they were never rendered.
+  // Drop slots at refCount 0. Passive: child SlotIn acquire effects run
+  // first, so every committed slot is held by now.
   useEffect(() => {
     for (const [id, slot] of slotsRef.current) {
       if (slot.refCount <= 0) slotsRef.current.delete(id);
@@ -144,8 +164,8 @@ export function A11yTreeMultiplexer({
         getOrCreateSlot,
         acquireSlot,
         releaseSlot,
-        getSlot,
-        version,
+        getHeldSlot,
+        subscribeSlot,
       }}
     >
       {children}
@@ -203,18 +223,21 @@ export interface A11yTreeSlotProps {
  * Defines a slot in the a11y tree structure.
  *
  * Grouped slots render into the enclosing A11yTreeSlotGroup. Standalone
- * slots render into the tunnel context captured when the slot was first
- * created, even if later items acquire it from elsewhere (dev warns).
+ * slots render into their first holder's tunnel context; holders from
+ * other contexts trigger a dev warning.
  */
 export function A11yTreeSlot({ id, render }: A11yTreeSlotProps) {
   const ctx = useContext(A11yTreeMultiplexerContext);
   const groupTunnel = useContext(A11ySlotGroupContext);
   const ContextBridge = useContextBridge();
+  const slot = useSyncExternalStore(
+    (onChange) => ctx?.subscribeSlot(id, onChange) ?? noop,
+    () => ctx?.getHeldSlot(id),
+    // Holders acquire in effects, which skip the server.
+    () => undefined,
+  );
 
-  if (!ctx) return null;
-
-  const slot = ctx.getSlot(id);
-  if (!slot || slot.refCount <= 0) return null;
+  if (!slot) return null;
 
   // Grouped slots render into the group tunnel; standalone slots into
   // the parent tunnel captured at slot creation.
