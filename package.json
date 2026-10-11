@@ -29,7 +29,9 @@
   "sideEffects": false,
   "scripts": {
     "dev": "concurrently -P \"typedoc --watch --preserveWatchOutput\" \"vite --config vite.pages.config.ts {@}\" --",
-    "build": "tsc -b && eslint . && vite build && pnpm pack --out pack/%s-%v.tgz",
+    "build": "tsc -b && eslint . && vite build",
+    "build:pack": "pnpm pack --out pack/%s-%v.tgz",
+    "prepack": "pnpm build",
     "build:pages": "typedoc && vite build --config vite.pages.config.ts",
     "preview": "vite preview --config vite.pages-preview.config.ts",
     "lint": "eslint .",
