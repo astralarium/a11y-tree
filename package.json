@@ -1,6 +1,6 @@
 {
   "name": "a11y-tree",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "packageManager": "pnpm@11.4.0",
   "description": "Accessibility for any React component",
