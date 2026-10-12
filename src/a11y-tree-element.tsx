@@ -8,7 +8,18 @@ export interface A11yTreeElementProps {
   children: ReactNode;
 }
 
-/** Tunnels children into the a11y tree. */
+/**
+ * Tunnels children into the a11y tree.
+ *
+ * Content orders by React tree position, so the a11y tree follows scene
+ * order. Content reads the providers above this element; a context
+ * change re-renders only the markup that reads it.
+ *
+ * Updates whenever its parent re-renders, and each update re-derives
+ * order by walking the React tree. Keep elements out of components that
+ * re-render every frame, or route them through A11yTreeMultiplexer as
+ * memoized items.
+ */
 export function A11yTreeElement({ children }: A11yTreeElementProps) {
   const { tunnel: parentTunnel } = useA11yTunnel();
 

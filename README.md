@@ -23,8 +23,7 @@ Requires React 19.2 or later.
   Root provider. Wrap your canvas (and `<A11yTreeRenderer>`) in it.
 
 - [`<A11yTreeRenderer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeRenderer.html):
-  Renders the accessibility tree into the DOM. Default class `"sr-only"` (ie. visually hidden in Tailwind).
-  Mount one per tree; to show or hide the tree, toggle its `className`.
+  Renders the accessibility tree into the DOM, visually hidden by default.
 
 - [`<FiberAnchor>`](https://astralarium.github.io/fiber-tunnel/docs/functions/FiberAnchor.html)
   (from [fiber-tunnel](https://github.com/astralarium/fiber-tunnel)):
@@ -68,16 +67,16 @@ The a11y tree mirrors the scene hierarchy:
 
 ### Multiplexing
 
-Enables performance-sensitive scenes to use memoized item arrays to avoid re-renders.
+For performance-sensitive scenes: route memoized items into slots as data.
 
 - [`<A11yTreeMultiplexer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMultiplexer.html):
-  Routes items into slots as data; memoized content moves without remounting or re-rendering:
+  Routes items into slots.
 
 - [`<A11yTreeSlot>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlot.html):
-  Defines a slot in the tree structure. Only renders while an item is inside.
+  A slot in the tree structure.
 
 - [`<A11yTreeSlotGroup>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlotGroup.html):
-  Groups slots under a shared wrapper, ordered by position in the React tree.
+  Groups slots under a shared wrapper.
 
 ```tsx
 const items = useMemo(
@@ -122,43 +121,14 @@ const items = useMemo(
 </A11yTreeMultiplexer>;
 ```
 
-Items keep React identity (by `key`) when `slotId` changes, so focus and component state survive zone changes.
-Memoized `render` elements do not re-render when they change order.
-
 ### Error handling
 
-Errors thrown by tunneled content are caught in `A11yTreeRenderer`; the default UI is a dismissible dialog.
-Replace it with the `fallback` prop, wrapped in
-[`<A11yTreeFallbackRenderer portal>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeFallbackRenderer.html)
-to portal it out of the visually hidden tree container:
-
-```tsx
-<A11yTreeRenderer
-  fallback={({ error, reset }) => (
-    <A11yTreeFallbackRenderer portal>
-      <MyErrorToast message={error?.message} onDismiss={reset} />
-    </A11yTreeFallbackRenderer>
-  )}
-/>
-```
+`A11yTreeRenderer` catches errors from tunneled content and shows a dismissible dialog;
+its `fallback` prop replaces the dialog.
 
 ### Tunnels
 
 The tree is built on [fiber-tunnel](https://github.com/astralarium/fiber-tunnel), which orders content by React tree position.
-
-### Notes
-
-- Tunneled elements are ordered by their position in the React tree, so the a11y tree structure follows scene order.
-- Tunnel updates re-derive order by walking the React tree, and an `A11yTreeElement` updates whenever its parent re-renders.
-  Keep elements out of components that re-render every frame, or route them through the multiplexer as memoized items.
-- A canvas hidden by `<Activity>` keeps a11y content unless
-  the host bridges Activity (its-fine 2.1+ `useActivityBridge`).
-- Tunneled markup reads the providers above its `A11yTreeElement` in its own React root;
-  a context change re-renders only the markup that reads it.
-  A nested root sees outer providers when its host bridges them (r3f's `<Canvas>` does;
-  otherwise wrap its content in fiber-tunnel's `ContextBridge`).
-- Tunneled markup appears by a follow-up commit, scheduled in a microtask after its element commits;
-  in tests, await `act` before reading the tree.
 
 [See examples on the documentation website](https://astralarium.github.io/a11y-tree)
 

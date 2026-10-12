@@ -40,4 +40,4 @@ through async `act`.
 
 ## Open items
 
-- Release; eternal-engine bumps with pixi-three.
+- eternal-engine bumps with pixi-three.

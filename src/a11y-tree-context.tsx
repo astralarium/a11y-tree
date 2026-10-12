@@ -28,6 +28,13 @@ export interface A11yTreeProviderProps {
  * `<Canvas>`) in fiber-tunnel's `FiberAnchor`, so its content reads at
  * the root's place. Unanchored roots have no defined order (dev warns).
  *
+ * A nested root sees outer providers when its host bridges them (r3f's
+ * `<Canvas>` does); otherwise pass `FiberAnchor` a function child and
+ * wrap the root's content in `ContextBridge` with the bridge it receives.
+ *
+ * A canvas hidden by `<Activity>` keeps its a11y content unless the host
+ * bridges Activity (its-fine 2.1+ `useActivityBridge`).
+ *
  * @example
  * <A11yTreeProvider>
  *   <FiberAnchor>
@@ -206,7 +213,7 @@ export interface A11yTreeRendererProps {
  * show or hide the tree, toggle the renderer's className.
  *
  * Content appears by a follow-up commit, scheduled in a microtask after
- * its element commits.
+ * its element commits; in tests, await `act` before reading the tree.
  */
 export function A11yTreeRenderer({
   className = "sr-only",

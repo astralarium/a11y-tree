@@ -44,9 +44,14 @@ function noop() {}
  * overrides nested between the group and its slots. */
 const A11ySlotGroupContext = createContext<FiberTunnel | null>(null);
 
+/** A11y content routed to a slot. */
 export interface A11yTreeMultiplexerItem {
+  /** Target A11yTreeSlot id. Changing it moves the content, keeping
+   * React identity, focus, and component state. */
   slotId: string;
+  /** Identity across reorders and slot moves. Defaults to array index. */
   key?: Key;
+  /** A11y content. Memoized elements skip re-renders on reorder. */
   render: ReactNode;
 }
 
@@ -70,7 +75,8 @@ function itemKey(item: A11yTreeMultiplexerItem, index: number): string {
  * Multiplexes a11y content from multiple slots into a single tree.
  *
  * Define slots with A11yTreeSlot / A11yTreeSlotGroup as `children`.
- * Route content into slots via `items`.
+ * Route content into slots via `items`. Items move between slots and
+ * reorder as data: memoized content keeps its mount and skips re-renders.
  */
 export function A11yTreeMultiplexer({
   items,
@@ -216,7 +222,8 @@ export interface A11yTreeSlotProps {
 }
 
 /**
- * Defines a slot in the a11y tree structure.
+ * Defines a slot in the a11y tree structure. Renders while an item
+ * routes into it.
  *
  * Grouped slots render into the enclosing A11yTreeSlotGroup. Standalone
  * slots render into their first holder's tunnel context; holders from

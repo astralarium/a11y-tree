@@ -1,4 +1,4 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - fiber-tunnel@0.3.0
+  - fiber-tunnel@0.4.0
