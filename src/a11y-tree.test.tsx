@@ -1,8 +1,22 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { useContextBridge } from "its-fine";
-import { memo, type ReactNode, StrictMode, useState } from "react";
+import {
+  act,
+  fireEvent,
+  render,
+  type RenderResult,
+  screen,
+  within,
+} from "@testing-library/react";
+import {
+  createContext,
+  memo,
+  type ReactNode,
+  StrictMode,
+  Suspense,
+  use,
+  useState,
+} from "react";
 import { describe, expect, type Mock, test, vi } from "vitest";
 
 import {
@@ -17,6 +31,21 @@ import {
   A11yTreeSlotGroup,
   A11yTreeSlotIn,
 } from "./a11y-tree-multiplexer";
+import { useA11yTunnel } from "./use-a11y-tunnel";
+
+const flush = () => act(async () => {});
+
+/** Renders `ui` and settles tunnel content; `rerender` settles too. */
+async function renderTree(ui: ReactNode) {
+  let result!: RenderResult;
+  await act(async () => {
+    result = render(ui);
+  });
+  return {
+    ...result,
+    rerender: (next: ReactNode) => act(async () => result.rerender(next)),
+  };
+}
 
 function TestProvider({ children }: { children: ReactNode }) {
   return (
@@ -28,8 +57,8 @@ function TestProvider({ children }: { children: ReactNode }) {
 }
 
 describe("A11yTreeProvider", () => {
-  test("renders children", () => {
-    render(
+  test("renders children", async () => {
+    await renderTree(
       <TestProvider>
         <div data-testid="child">content</div>
       </TestProvider>,
@@ -38,8 +67,154 @@ describe("A11yTreeProvider", () => {
   });
 });
 
+describe("context bridging", () => {
+  const Theme = createContext("none");
+
+  function ThemeLabel({ name }: { name: string }) {
+    return (
+      <div role="option">
+        {name} {use(Theme)}
+      </div>
+    );
+  }
+
+  test("renders a11y content with context provided above its element", async () => {
+    await renderTree(
+      <TestProvider>
+        <Theme value="dark">
+          <A11yTreeContainer
+            render={(content) => (
+              <div role="listbox" aria-label="Hand">
+                <ThemeLabel name="container" />
+                {content}
+              </div>
+            )}
+          >
+            <A11yTreeElement>
+              <ThemeLabel name="element" />
+            </A11yTreeElement>
+          </A11yTreeContainer>
+        </Theme>
+      </TestProvider>,
+    );
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["container dark", "element dark"]);
+  });
+
+  test("re-renders only consumers when a bridged value changes", async () => {
+    const consumerRendered = vi.fn();
+    const otherRendered = vi.fn();
+    function Consumer() {
+      consumerRendered();
+      return <div role="option">consumer {use(Theme)}</div>;
+    }
+    function Other() {
+      otherRendered();
+      return <div role="option">other</div>;
+    }
+    function ThemeToggle({ children }: { children: ReactNode }) {
+      const [theme, setTheme] = useState("dark");
+      return (
+        <Theme value={theme}>
+          <button onClick={() => setTheme("light")}>toggle</button>
+          {children}
+        </Theme>
+      );
+    }
+
+    await renderTree(
+      <TestProvider>
+        <ThemeToggle>
+          <A11yTreeContainer
+            render={(content) => (
+              <div role="listbox" aria-label="Hand">
+                <Other />
+                {content}
+              </div>
+            )}
+          >
+            <A11yTreeElement>
+              <Consumer />
+            </A11yTreeElement>
+          </A11yTreeContainer>
+        </ThemeToggle>
+      </TestProvider>,
+    );
+    consumerRendered.mockClear();
+    otherRendered.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    await flush();
+    expect(
+      screen.getByRole("option", { name: "consumer light" }),
+    ).toBeVisible();
+    expect(consumerRendered).toHaveBeenCalledTimes(1);
+    expect(otherRendered).not.toHaveBeenCalled();
+  });
+
+  test("keeps slot content state when a holder moves between slots", async () => {
+    function Counter({ name }: { name: string }) {
+      const [count, setCount] = useState(0);
+      return (
+        <button onClick={() => setCount((c) => c + 1)}>
+          {name} {count}
+        </button>
+      );
+    }
+    const renders = {
+      X: (
+        <A11yTreeElement>
+          <div role="option">X</div>
+        </A11yTreeElement>
+      ),
+      Y: (
+        <A11yTreeElement>
+          <Counter name="Y" />
+        </A11yTreeElement>
+      ),
+    };
+    function TestComponent({ xSlot }: { xSlot: string }) {
+      return (
+        <TestProvider>
+          <A11yTreeMultiplexer
+            items={[
+              { key: "X", slotId: xSlot, render: renders.X },
+              { key: "Y", slotId: "a", render: renders.Y },
+            ]}
+          >
+            {["a", "b"].map((id) => (
+              <A11yTreeSlot
+                key={id}
+                id={id}
+                render={(content) => (
+                  <div role="listbox" aria-label={id}>
+                    <Counter name={id} />
+                    {content}
+                  </div>
+                )}
+              />
+            ))}
+          </A11yTreeMultiplexer>
+        </TestProvider>
+      );
+    }
+
+    const { rerender } = await renderTree(<TestComponent xSlot="a" />);
+    fireEvent.click(screen.getByRole("button", { name: "a 0" }));
+    fireEvent.click(screen.getByRole("button", { name: "Y 0" }));
+    await flush();
+
+    await rerender(<TestComponent xSlot="b" />);
+    expect(screen.getByRole("listbox", { name: "b" })).toHaveTextContent("X");
+    const slotA = screen.getByRole("listbox", { name: "a" });
+    expect(within(slotA).getByRole("button", { name: "a 1" })).toBeVisible();
+    expect(within(slotA).getByRole("button", { name: "Y 1" })).toBeVisible();
+  });
+});
+
 describe("tunnel ordering", () => {
-  test("keeps element order when a tunneled element re-renders", () => {
+  test("keeps element order when a tunneled element re-renders", async () => {
     function CounterElement({ label }: { label: string }) {
       const [count, setCount] = useState(0);
       return (
@@ -51,7 +226,7 @@ describe("tunnel ordering", () => {
       );
     }
 
-    render(
+    await renderTree(
       <TestProvider>
         <CounterElement label="First" />
         <CounterElement label="Second" />
@@ -60,7 +235,9 @@ describe("tunnel ordering", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "First 0" }));
+    await flush();
     fireEvent.click(screen.getByRole("button", { name: "Second 0" }));
+    await flush();
 
     const buttons = screen.getAllByRole("button");
     expect(buttons[0]).toHaveTextContent("First 1");
@@ -68,7 +245,7 @@ describe("tunnel ordering", () => {
     expect(buttons[2]).toHaveTextContent("Third 0");
   });
 
-  test("keeps element order when elements mount later", () => {
+  test("keeps element order when elements mount later", async () => {
     function TestComponent({ showFirst }: { showFirst: boolean }) {
       return (
         <TestProvider>
@@ -84,17 +261,15 @@ describe("tunnel ordering", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent showFirst={false} />);
-    act(() => {
-      rerender(<TestComponent showFirst={true} />);
-    });
+    const { rerender } = await renderTree(<TestComponent showFirst={false} />);
+    await rerender(<TestComponent showFirst={true} />);
 
     const buttons = screen.getAllByRole("button");
     expect(buttons[0]).toHaveTextContent("First");
     expect(buttons[1]).toHaveTextContent("Second");
   });
 
-  test("picks up a reorder of memoized elements on the next tunnel update", () => {
+  test("picks up a reorder of memoized elements on the next tunnel update", async () => {
     const MemoItem = memo(function MemoItem({ label }: { label: string }) {
       return (
         <A11yTreeElement>
@@ -123,11 +298,14 @@ describe("tunnel ordering", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent order={["A", "B", "C"]} />);
+    const { rerender } = await renderTree(
+      <TestComponent order={["A", "B", "C"]} />,
+    );
     // Memoized items don't re-render on the move; the tunnel's next
     // update re-derives order from the fiber tree.
-    rerender(<TestComponent order={["C", "A", "B"]} />);
+    await rerender(<TestComponent order={["C", "A", "B"]} />);
     fireEvent.click(screen.getByRole("button", { name: "flush 0" }));
+    await flush();
 
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
@@ -140,7 +318,7 @@ describe("tunnel ordering", () => {
 });
 
 describe("TunnelErrorBoundary", () => {
-  test("shows a dismissable non-modal dialog outside the renderer container", () => {
+  test("shows a dismissable non-modal dialog outside the renderer container", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -152,7 +330,7 @@ describe("TunnelErrorBoundary", () => {
       return <button>Recovered</button>;
     }
 
-    const { container } = render(
+    const { container } = await renderTree(
       <TestProvider>
         <A11yTreeElement>
           <Boom />
@@ -170,6 +348,7 @@ describe("TunnelErrorBoundary", () => {
 
     shouldThrow = false;
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await flush();
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
@@ -178,7 +357,7 @@ describe("TunnelErrorBoundary", () => {
     consoleError.mockRestore();
   });
 
-  test("renders custom fallback instead of the built-in dialog", () => {
+  test("renders custom fallback instead of the built-in dialog", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -190,7 +369,7 @@ describe("TunnelErrorBoundary", () => {
       return <button>Recovered</button>;
     }
 
-    const { container } = render(
+    const { container } = await renderTree(
       <A11yTreeProvider>
         <A11yTreeElement>
           <Boom />
@@ -217,6 +396,7 @@ describe("TunnelErrorBoundary", () => {
 
     shouldThrow = false;
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await flush();
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(
@@ -227,8 +407,8 @@ describe("TunnelErrorBoundary", () => {
 });
 
 describe("A11yTreeElement", () => {
-  test("tunnels content to A11yTreeRenderer", () => {
-    render(
+  test("tunnels content to A11yTreeRenderer", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeElement>
           <button>Click me</button>
@@ -240,8 +420,8 @@ describe("A11yTreeElement", () => {
     ).toBeInTheDocument();
   });
 
-  test("tunnels multiple elements", () => {
-    render(
+  test("tunnels multiple elements", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeElement>
           <button>First</button>
@@ -254,11 +434,37 @@ describe("A11yTreeElement", () => {
     expect(screen.getByRole("button", { name: "First" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second" })).toBeInTheDocument();
   });
+
+  test("keeps scene content visible while a11y content suspends", async () => {
+    let resolve!: () => void;
+    const ready = new Promise<void>((r) => (resolve = r));
+    function Label() {
+      use(ready);
+      return <div role="option">loaded</div>;
+    }
+
+    await renderTree(
+      <TestProvider>
+        <Suspense fallback={<div>scene fallback</div>}>
+          <div data-testid="scene" />
+          <A11yTreeElement>
+            <Label />
+          </A11yTreeElement>
+        </Suspense>
+      </TestProvider>,
+    );
+    expect(screen.getByTestId("scene")).toBeVisible();
+    expect(screen.queryByText("scene fallback")).not.toBeInTheDocument();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+
+    await act(async () => resolve());
+    expect(screen.getByRole("option", { name: "loaded" })).toBeInTheDocument();
+  });
 });
 
 describe("A11yTreeContainer", () => {
-  test("wraps content with render function", () => {
-    render(
+  test("wraps content with render function", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeContainer
           render={(content) => (
@@ -278,8 +484,8 @@ describe("A11yTreeContainer", () => {
     expect(screen.getByRole("button", { name: "Nested" })).toBeInTheDocument();
   });
 
-  test("supports nested containers", () => {
-    render(
+  test("supports nested containers", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeContainer
           render={(content) => (
@@ -309,8 +515,8 @@ describe("A11yTreeContainer", () => {
 });
 
 describe("A11yTreeMultiplexer", () => {
-  test("renders slot content via items and A11yTreeSlot", () => {
-    render(
+  test("renders slot content via items and A11yTreeSlot", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -339,8 +545,8 @@ describe("A11yTreeMultiplexer", () => {
     expect(screen.getByRole("option", { name: "Item 1" })).toBeInTheDocument();
   });
 
-  test("renders multiple items in same slot", () => {
-    render(
+  test("renders multiple items in same slot", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -379,8 +585,8 @@ describe("A11yTreeMultiplexer", () => {
     expect(screen.getByRole("option", { name: "Item B" })).toBeInTheDocument();
   });
 
-  test("renders multiple slots independently", () => {
-    render(
+  test("renders multiple slots independently", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -433,7 +639,7 @@ describe("A11yTreeMultiplexer", () => {
     );
   });
 
-  test("A11yTreeSlot does not render until item creates the slot", () => {
+  test("A11yTreeSlot does not render until item creates the slot", async () => {
     function TestComponent({ showInput }: { showInput: boolean }) {
       return (
         <TestProvider>
@@ -466,12 +672,12 @@ describe("A11yTreeMultiplexer", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent showInput={false} />);
+    const { rerender } = await renderTree(<TestComponent showInput={false} />);
     expect(
       screen.queryByRole("listbox", { name: "lazy-slot" }),
     ).not.toBeInTheDocument();
 
-    rerender(<TestComponent showInput={true} />);
+    await rerender(<TestComponent showInput={true} />);
     expect(
       screen.getByRole("listbox", { name: "lazy-slot" }),
     ).toBeInTheDocument();
@@ -482,7 +688,7 @@ describe("A11yTreeMultiplexer", () => {
 });
 
 describe("A11yTreeMultiplexer slot mutations", () => {
-  test("handles slot removal when all inputs unmount", () => {
+  test("handles slot removal when all inputs unmount", async () => {
     function TestComponent({ items }: { items: string[] }) {
       return (
         <TestProvider>
@@ -510,20 +716,20 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent items={["A", "B", "C"]} />);
+    const { rerender } = await renderTree(
+      <TestComponent items={["A", "B", "C"]} />,
+    );
     expect(screen.getByRole("option", { name: "A" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "B" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "C" })).toBeInTheDocument();
 
-    act(() => {
-      rerender(<TestComponent items={[]} />);
-    });
+    await rerender(<TestComponent items={[]} />);
     expect(
       screen.queryByRole("listbox", { name: "dynamic-slot" }),
     ).not.toBeInTheDocument();
   });
 
-  test("handles rapid slot additions and removals", () => {
+  test("handles rapid slot additions and removals", async () => {
     function TestComponent({ items }: { items: string[] }) {
       return (
         <TestProvider>
@@ -551,25 +757,21 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent items={["1"]} />);
+    const { rerender } = await renderTree(<TestComponent items={["1"]} />);
     expect(screen.getByRole("option", { name: "1" })).toBeInTheDocument();
 
-    act(() => {
-      rerender(<TestComponent items={["1", "2", "3"]} />);
-    });
+    await rerender(<TestComponent items={["1", "2", "3"]} />);
     expect(screen.getByRole("option", { name: "1" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "2" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "3" })).toBeInTheDocument();
 
-    act(() => {
-      rerender(<TestComponent items={["2"]} />);
-    });
+    await rerender(<TestComponent items={["2"]} />);
     expect(screen.queryByRole("option", { name: "1" })).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: "2" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "3" })).not.toBeInTheDocument();
   });
 
-  test("handles item reordering within a slot", () => {
+  test("handles item reordering within a slot", async () => {
     function TestComponent({ items }: { items: string[] }) {
       return (
         <TestProvider>
@@ -597,16 +799,16 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent items={["A", "B", "C"]} />);
+    const { rerender } = await renderTree(
+      <TestComponent items={["A", "B", "C"]} />,
+    );
     let options = screen.getAllByRole("option");
     expect(options).toHaveLength(3);
     expect(options[0]).toHaveTextContent("A");
     expect(options[1]).toHaveTextContent("B");
     expect(options[2]).toHaveTextContent("C");
 
-    act(() => {
-      rerender(<TestComponent items={["C", "A", "B"]} />);
-    });
+    await rerender(<TestComponent items={["C", "A", "B"]} />);
     options = screen.getAllByRole("option");
     expect(options).toHaveLength(3);
     expect(options[0]).toHaveTextContent("C");
@@ -614,7 +816,7 @@ describe("A11yTreeMultiplexer slot mutations", () => {
     expect(options[2]).toHaveTextContent("B");
   });
 
-  test("handles item movement between slots", () => {
+  test("handles item movement between slots", async () => {
     function TestComponent({
       slot1Items,
       slot2Items,
@@ -667,7 +869,7 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       );
     }
 
-    const { rerender } = render(
+    const { rerender } = await renderTree(
       <TestComponent slot1Items={["A", "B"]} slot2Items={["C"]} />,
     );
     let slot1 = screen.getByRole("listbox", { name: "slot-1" });
@@ -676,16 +878,16 @@ describe("A11yTreeMultiplexer slot mutations", () => {
     expect(slot1).toContainElement(screen.getByRole("option", { name: "B" }));
     expect(slot2).toContainElement(screen.getByRole("option", { name: "C" }));
 
-    act(() => {
-      rerender(<TestComponent slot1Items={["A"]} slot2Items={["B", "C"]} />);
-    });
+    await rerender(
+      <TestComponent slot1Items={["A"]} slot2Items={["B", "C"]} />,
+    );
     slot1 = screen.getByRole("listbox", { name: "slot-1" });
     slot2 = screen.getByRole("listbox", { name: "slot-2" });
     expect(slot1.querySelectorAll("[role='option']")).toHaveLength(1);
     expect(slot2.querySelectorAll("[role='option']")).toHaveLength(2);
   });
 
-  test("handles simultaneous add and remove in different slots", () => {
+  test("handles simultaneous add and remove in different slots", async () => {
     function TestComponent({ slots }: { slots: Record<string, string[]> }) {
       return (
         <TestProvider>
@@ -718,7 +920,7 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       );
     }
 
-    const { rerender } = render(
+    const { rerender } = await renderTree(
       <TestComponent
         slots={{
           "slot-a": ["1", "2"],
@@ -733,17 +935,15 @@ describe("A11yTreeMultiplexer slot mutations", () => {
     expect(screen.getByRole("listbox", { name: "slot-c" })).toBeInTheDocument();
     expect(screen.getAllByRole("option")).toHaveLength(5);
 
-    act(() => {
-      rerender(
-        <TestComponent
-          slots={{
-            "slot-a": ["1", "2", "6"],
-            "slot-b": [],
-            "slot-c": ["5", "7"],
-          }}
-        />,
-      );
-    });
+    await rerender(
+      <TestComponent
+        slots={{
+          "slot-a": ["1", "2", "6"],
+          "slot-b": [],
+          "slot-c": ["5", "7"],
+        }}
+      />,
+    );
 
     expect(screen.getByRole("listbox", { name: "slot-a" })).toBeInTheDocument();
     expect(
@@ -757,7 +957,7 @@ describe("A11yTreeMultiplexer slot mutations", () => {
     expect(screen.queryByRole("option", { name: "4" })).not.toBeInTheDocument();
   });
 
-  test("handles slot id changes", () => {
+  test("handles slot id changes", async () => {
     function TestComponent({ slotId }: { slotId: string }) {
       return (
         <TestProvider>
@@ -794,7 +994,9 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent slotId="slot-alpha" />);
+    const { rerender } = await renderTree(
+      <TestComponent slotId="slot-alpha" />,
+    );
     expect(
       screen.getByRole("listbox", { name: "slot-alpha" }),
     ).toContainElement(screen.getByRole("option", { name: "Moving Item" }));
@@ -802,9 +1004,7 @@ describe("A11yTreeMultiplexer slot mutations", () => {
       screen.queryByRole("listbox", { name: "slot-beta" }),
     ).not.toBeInTheDocument();
 
-    act(() => {
-      rerender(<TestComponent slotId="slot-beta" />);
-    });
+    await rerender(<TestComponent slotId="slot-beta" />);
 
     expect(
       screen.queryByRole("listbox", { name: "slot-alpha" }),
@@ -816,8 +1016,8 @@ describe("A11yTreeMultiplexer slot mutations", () => {
 });
 
 describe("A11yTreeSlotGroup", () => {
-  test("groups multiple slots under a wrapper", () => {
-    render(
+  test("groups multiple slots under a wrapper", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -879,7 +1079,7 @@ describe("A11yTreeSlotGroup", () => {
     );
   });
 
-  test("orders slots by tree position, not registration order", () => {
+  test("orders slots by tree position, not registration order", async () => {
     const handItem = {
       key: "h",
       slotId: "hand",
@@ -938,15 +1138,13 @@ describe("A11yTreeSlotGroup", () => {
 
     // Deck's slot mounts and registers first; hand's slot appears only
     // when its item arrives. Tree order must still win.
-    const { rerender } = render(<TestComponent items={[deckItem]} />);
+    const { rerender } = await renderTree(<TestComponent items={[deckItem]} />);
     expect(screen.getByRole("listbox", { name: "deck" })).toBeInTheDocument();
     expect(
       screen.queryByRole("listbox", { name: "hand" }),
     ).not.toBeInTheDocument();
 
-    act(() => {
-      rerender(<TestComponent items={[deckItem, handItem]} />);
-    });
+    await rerender(<TestComponent items={[deckItem, handItem]} />);
 
     const listboxes = screen.getAllByRole("listbox");
     expect(
@@ -954,7 +1152,7 @@ describe("A11yTreeSlotGroup", () => {
     ).toEqual(["hand", "deck"]);
   });
 
-  test("handles dynamic slots within a group", () => {
+  test("handles dynamic slots within a group", async () => {
     function TestComponent({ showDeck }: { showDeck: boolean }) {
       return (
         <TestProvider>
@@ -1015,13 +1213,11 @@ describe("A11yTreeSlotGroup", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent showDeck={true} />);
+    const { rerender } = await renderTree(<TestComponent showDeck={true} />);
     expect(screen.getByRole("listbox", { name: "hand" })).toBeInTheDocument();
     expect(screen.getByRole("listbox", { name: "deck" })).toBeInTheDocument();
 
-    act(() => {
-      rerender(<TestComponent showDeck={false} />);
-    });
+    await rerender(<TestComponent showDeck={false} />);
     expect(screen.getByRole("listbox", { name: "hand" })).toBeInTheDocument();
     expect(
       screen.queryByRole("listbox", { name: "deck" }),
@@ -1030,7 +1226,7 @@ describe("A11yTreeSlotGroup", () => {
 });
 
 describe("A11yTreeMultiplexer stress tests", () => {
-  test("handles many simultaneous slot mutations", () => {
+  test("handles many simultaneous slot mutations", async () => {
     function TestComponent({ config }: { config: Record<string, string[]> }) {
       return (
         <TestProvider>
@@ -1072,7 +1268,9 @@ describe("A11yTreeMultiplexer stress tests", () => {
       d: ["7", "8", "9", "10"],
     };
 
-    const { rerender } = render(<TestComponent config={initialConfig} />);
+    const { rerender } = await renderTree(
+      <TestComponent config={initialConfig} />,
+    );
     expect(screen.getAllByRole("option")).toHaveLength(10);
 
     const mutatedConfig = {
@@ -1083,9 +1281,7 @@ describe("A11yTreeMultiplexer stress tests", () => {
       e: ["13", "14"],
     };
 
-    act(() => {
-      rerender(<TestComponent config={mutatedConfig} />);
-    });
+    await rerender(<TestComponent config={mutatedConfig} />);
 
     expect(screen.getByRole("listbox", { name: "a" })).toBeInTheDocument();
     expect(screen.getByRole("listbox", { name: "b" })).toBeInTheDocument();
@@ -1101,7 +1297,7 @@ describe("A11yTreeMultiplexer stress tests", () => {
     expect(screen.getByRole("option", { name: "12" })).toBeInTheDocument();
   });
 
-  test("handles batch slot operations correctly", () => {
+  test("handles batch slot operations correctly", async () => {
     function TestComponent({
       items,
     }: {
@@ -1144,7 +1340,9 @@ describe("A11yTreeMultiplexer stress tests", () => {
       { slotId: "s2", value: "c" },
     ];
 
-    const { rerender } = render(<TestComponent items={initialItems} />);
+    const { rerender } = await renderTree(
+      <TestComponent items={initialItems} />,
+    );
     expect(screen.getAllByRole("option")).toHaveLength(3);
 
     const newItems = [
@@ -1154,9 +1352,7 @@ describe("A11yTreeMultiplexer stress tests", () => {
       { slotId: "s2", value: "d" },
     ];
 
-    act(() => {
-      rerender(<TestComponent items={newItems} />);
-    });
+    await rerender(<TestComponent items={newItems} />);
 
     expect(
       screen.queryByRole("listbox", { name: "s1" }),
@@ -1167,8 +1363,8 @@ describe("A11yTreeMultiplexer stress tests", () => {
 });
 
 describe("A11yTreeSlotGroup nesting", () => {
-  test("slots nested under another tunnel inside a group render into the group", () => {
-    render(
+  test("slots nested under another tunnel inside a group render into the group", async () => {
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -1222,10 +1418,10 @@ describe("A11yTreeSlotGroup nesting", () => {
 });
 
 describe("A11yTreeSlot tunnel context warning", () => {
-  test("warns in dev when a slot is acquired under a different tunnel context", () => {
+  test("warns in dev when a slot is acquired under a different tunnel context", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    render(
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -1264,7 +1460,7 @@ describe("A11yTreeSlot tunnel context warning", () => {
     consoleWarn.mockRestore();
   });
 
-  test("a slot remounted under a new container renders into it without a warning", () => {
+  test("a slot remounted under a new container renders into it without a warning", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Remounts the container; the multiplexer stays put.
     function Toggle() {
@@ -1291,7 +1487,7 @@ describe("A11yTreeSlot tunnel context warning", () => {
       );
     }
 
-    render(
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer items={[]}>
           <Toggle />
@@ -1307,11 +1503,13 @@ describe("A11yTreeSlot tunnel context warning", () => {
       </TestProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    await flush();
     expect(
       screen.queryByRole("listbox", { name: "s" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    await flush();
     expect(
       within(screen.getByRole("group", { name: "container" })).getByRole(
         "listbox",
@@ -1322,10 +1520,10 @@ describe("A11yTreeSlot tunnel context warning", () => {
     consoleWarn.mockRestore();
   });
 
-  test("does not warn when all items share the slot's tunnel context", () => {
+  test("does not warn when all items share the slot's tunnel context", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    render(
+    await renderTree(
       <TestProvider>
         <A11yTreeMultiplexer
           items={[
@@ -1382,11 +1580,11 @@ describe("A11yTreeRenderer visibility warning", () => {
     return () => trigger?.();
   }
 
-  test("warns in dev when the default-class container is visibly rendered", () => {
+  test("warns in dev when the default-class container is visibly rendered", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const triggerResize = stubResizeObserver();
 
-    const { container } = render(
+    const { container } = await renderTree(
       <A11yTreeProvider>
         <A11yTreeElement>
           <button>Visible</button>
@@ -1400,7 +1598,7 @@ describe("A11yTreeRenderer visibility warning", () => {
       height: 40,
     } as DOMRect);
 
-    act(() => triggerResize());
+    await act(async () => triggerResize());
 
     expect(consoleWarn).toHaveBeenCalledWith(
       expect.stringContaining("A11yTreeRenderer container is visible"),
@@ -1410,11 +1608,11 @@ describe("A11yTreeRenderer visibility warning", () => {
     consoleWarn.mockRestore();
   });
 
-  test("does not warn when the tree container is hidden", () => {
+  test("does not warn when the tree container is hidden", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const triggerResize = stubResizeObserver();
 
-    render(
+    await renderTree(
       <A11yTreeProvider>
         <A11yTreeElement>
           <button>Hidden</button>
@@ -1423,7 +1621,7 @@ describe("A11yTreeRenderer visibility warning", () => {
       </A11yTreeProvider>,
     );
     // jsdom rects default to 0x0, matching a visually hidden container.
-    act(() => triggerResize());
+    await act(async () => triggerResize());
 
     expect(consoleWarn).not.toHaveBeenCalled();
 
@@ -1431,11 +1629,11 @@ describe("A11yTreeRenderer visibility warning", () => {
     consoleWarn.mockRestore();
   });
 
-  test("does not warn for a custom className, even when visible", () => {
+  test("does not warn for a custom className, even when visible", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const triggerResize = stubResizeObserver();
 
-    const { container } = render(
+    const { container } = await renderTree(
       <TestProvider>
         <A11yTreeElement>
           <button>Visible</button>
@@ -1449,7 +1647,7 @@ describe("A11yTreeRenderer visibility warning", () => {
     } as DOMRect);
 
     // Custom classNames are trusted: no observer is attached.
-    act(() => triggerResize());
+    await act(async () => triggerResize());
 
     expect(consoleWarn).not.toHaveBeenCalled();
 
@@ -1459,8 +1657,8 @@ describe("A11yTreeRenderer visibility warning", () => {
 });
 
 describe("StrictMode", () => {
-  test("tunnels content in order under StrictMode", () => {
-    render(
+  test("tunnels content in order under StrictMode", async () => {
+    await renderTree(
       <StrictMode>
         <TestProvider>
           <A11yTreeElement>
@@ -1479,7 +1677,7 @@ describe("StrictMode", () => {
     ]);
   });
 
-  test("multiplexer routes, moves, and removes items under StrictMode", () => {
+  test("multiplexer routes, moves, and removes items under StrictMode", async () => {
     function TestComponent({
       slot1Items,
       slot2Items,
@@ -1534,7 +1732,7 @@ describe("StrictMode", () => {
       );
     }
 
-    const { rerender } = render(
+    const { rerender } = await renderTree(
       <TestComponent slot1Items={["A", "B"]} slot2Items={["C"]} />,
     );
     expect(screen.getByRole("listbox", { name: "slot-1" })).toContainElement(
@@ -1544,9 +1742,9 @@ describe("StrictMode", () => {
       screen.getByRole("option", { name: "C" }),
     );
 
-    act(() => {
-      rerender(<TestComponent slot1Items={["A"]} slot2Items={["B", "C"]} />);
-    });
+    await rerender(
+      <TestComponent slot1Items={["A"]} slot2Items={["B", "C"]} />,
+    );
     expect(
       screen
         .getByRole("listbox", { name: "slot-1" })
@@ -1558,15 +1756,13 @@ describe("StrictMode", () => {
         .querySelectorAll("[role='option']"),
     ).toHaveLength(2);
 
-    act(() => {
-      rerender(<TestComponent slot1Items={[]} slot2Items={[]} />);
-    });
+    await rerender(<TestComponent slot1Items={[]} slot2Items={[]} />);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
   });
 
-  test("grouped slots render under the group wrapper under StrictMode", () => {
-    render(
+  test("grouped slots render under the group wrapper under StrictMode", async () => {
+    await renderTree(
       <StrictMode>
         <TestProvider>
           <A11yTreeMultiplexer
@@ -1632,7 +1828,7 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
     ),
   };
 
-  test("reordering items with memoized render elements reorders the slot", () => {
+  test("reordering items with memoized render elements reorders the slot", async () => {
     function TestComponent({ order }: { order: string[] }) {
       return (
         <TestProvider>
@@ -1652,8 +1848,10 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent order={["A", "B", "C"]} />);
-    rerender(<TestComponent order={["C", "A", "B"]} />);
+    const { rerender } = await renderTree(
+      <TestComponent order={["A", "B", "C"]} />,
+    );
+    await rerender(<TestComponent order={["C", "A", "B"]} />);
 
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
@@ -1663,7 +1861,7 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
     ]);
   });
 
-  test("swapping a keyed item's memoized render node updates the slot", () => {
+  test("swapping a keyed item's memoized render node updates the slot", async () => {
     // Key order is unchanged, so the multiplexer does not refresh; the
     // swapped element must propagate through the tunnels on its own.
     function TestComponent({ label }: { label: string }) {
@@ -1681,10 +1879,10 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
       );
     }
 
-    const { rerender } = render(<TestComponent label="A" />);
+    const { rerender } = await renderTree(<TestComponent label="A" />);
     expect(screen.getByRole("option")).toHaveTextContent("A");
 
-    rerender(<TestComponent label="B" />);
+    await rerender(<TestComponent label="B" />);
     expect(screen.getByRole("option")).toHaveTextContent("B");
   });
 });
@@ -1701,8 +1899,8 @@ describe.each([
   ({ wrap, rendersPerUpdate }) => {
     type OnRender = (name: string) => void;
 
-    // Bridges every ancestor context and reports each render.
-    function BridgeProbe({
+    // Reads the nearest a11y tunnel and reports each render.
+    function TunnelProbe({
       name,
       onRender,
       children,
@@ -1712,7 +1910,7 @@ describe.each([
       children?: ReactNode;
     }) {
       "use no memo";
-      useContextBridge();
+      useA11yTunnel();
       onRender(name);
       return children;
     }
@@ -1722,28 +1920,28 @@ describe.each([
     }
 
     // Stable elements: only context changes reach the probes.
-    function setup(initial: [key: string, slotId: string][]) {
+    async function setup(initial: [key: string, slotId: string][]) {
       const onRender = vi.fn<OnRender>();
       const renders: Record<string, ReactNode> = Object.fromEntries(
         ["X", "Y"].map((name) => [
           name,
-          <BridgeProbe name={name} onRender={onRender}>
+          <TunnelProbe name={name} onRender={onRender}>
             <A11yTreeElement>
               <div role="option">{name}</div>
             </A11yTreeElement>
-          </BridgeProbe>,
+          </TunnelProbe>,
         ]),
       );
       const children = (
         <>
-          <BridgeProbe name="outside" onRender={onRender} />
+          <TunnelProbe name="outside" onRender={onRender} />
           {["a", "b"].map((id) => (
             <A11yTreeSlot
               key={id}
               id={id}
               render={(content) => (
                 <div role="listbox" aria-label={id}>
-                  <BridgeProbe name={`slot-${id}`} onRender={onRender} />
+                  <TunnelProbe name={`slot-${id}`} onRender={onRender} />
                   {content}
                 </div>
               )}
@@ -1770,22 +1968,24 @@ describe.each([
           </TestProvider>,
         );
       }
-      const { rerender } = render(<TestComponent placement={initial} />);
+      const { rerender } = await renderTree(
+        <TestComponent placement={initial} />,
+      );
       return {
         onRender,
         update: (placement: [key: string, slotId: string][]) =>
-          act(() => rerender(<TestComponent placement={placement} />)),
+          rerender(<TestComponent placement={placement} />),
       };
     }
 
-    test("an unmoved item renders once across another item's move between slots", () => {
-      const { onRender, update } = setup([
+    test("an unmoved item renders once across another item's move between slots", async () => {
+      const { onRender, update } = await setup([
         ["X", "a"],
         ["Y", "a"],
       ]);
       const before = rendersOf(onRender, "Y");
 
-      update([
+      await update([
         ["X", "b"],
         ["Y", "a"],
       ]);
@@ -1793,23 +1993,23 @@ describe.each([
       expect(rendersOf(onRender, "Y")).toBe(before);
     });
 
-    test("a moved item renders once per move", () => {
-      const { onRender, update } = setup([["X", "a"]]);
+    test("a moved item renders once per move", async () => {
+      const { onRender, update } = await setup([["X", "a"]]);
       const before = rendersOf(onRender, "X");
 
-      update([["X", "b"]]);
+      await update([["X", "b"]]);
       expect(screen.getByRole("listbox", { name: "b" })).toHaveTextContent("X");
       expect(rendersOf(onRender, "X")).toBe(before + rendersPerUpdate);
     });
 
-    test("a reorder within a slot renders no item", () => {
-      const { onRender, update } = setup([
+    test("a reorder within a slot renders no item", async () => {
+      const { onRender, update } = await setup([
         ["X", "a"],
         ["Y", "a"],
       ]);
       const before = onRender.mock.calls.length;
 
-      update([
+      await update([
         ["Y", "a"],
         ["X", "a"],
       ]);
@@ -1819,26 +2019,26 @@ describe.each([
       expect(onRender.mock.calls.length).toBe(before);
     });
 
-    test("multiplexer children outside slots render once across slot acquire and release", () => {
-      const { onRender, update } = setup([["X", "a"]]);
+    test("multiplexer children outside slots render once across slot acquire and release", async () => {
+      const { onRender, update } = await setup([["X", "a"]]);
       const before = rendersOf(onRender, "outside");
 
-      update([
+      await update([
         ["X", "a"],
         ["Y", "b"],
       ]);
-      update([["X", "a"]]);
+      await update([["X", "a"]]);
       expect(
         screen.queryByRole("listbox", { name: "b" }),
       ).not.toBeInTheDocument();
       expect(rendersOf(onRender, "outside")).toBe(before);
     });
 
-    test("a slot's content renders once while another slot gains its first item", () => {
-      const { onRender, update } = setup([["X", "a"]]);
+    test("a slot's content renders once while another slot gains its first item", async () => {
+      const { onRender, update } = await setup([["X", "a"]]);
       const before = rendersOf(onRender, "slot-a");
 
-      update([
+      await update([
         ["X", "a"],
         ["Y", "b"],
       ]);
@@ -1850,7 +2050,7 @@ describe.each([
 );
 
 describe("A11yTreeRenderer multiple renderers", () => {
-  test("each renderer renders a copy and a second one logs a dev error", () => {
+  test("each renderer renders a copy and a second one logs a dev error", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -1866,10 +2066,10 @@ describe("A11yTreeRenderer multiple renderers", () => {
       );
     }
 
-    const { container, rerender } = render(<App second={false} />);
+    const { container, rerender } = await renderTree(<App second={false} />);
     expect(consoleError).not.toHaveBeenCalled();
 
-    rerender(<App second={true} />);
+    await rerender(<App second={true} />);
     expect(container.querySelector(".out-a button")).toBeInTheDocument();
     expect(container.querySelector(".out-b button")).toBeInTheDocument();
     expect(consoleError).toHaveBeenCalledTimes(1);

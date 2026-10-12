@@ -1,7 +1,6 @@
-import { fiberTunnel } from "fiber-tunnel";
-import { useContextBridge } from "its-fine";
 import { type ReactNode, useState } from "react";
 
+import { createA11yTunnel } from "./create-a11y-tunnel";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 export interface A11yTreeElementProps {
@@ -29,16 +28,12 @@ export function A11yTreeContainer({
   children,
   render,
 }: A11yTreeContainerProps) {
-  const [ownTunnel] = useState(() => fiberTunnel());
+  const [ownTunnel] = useState(() => createA11yTunnel());
   const { tunnel: parentTunnel } = useA11yTunnel();
-  const ContextBridge = useContextBridge();
 
   return (
     <>
-      <parentTunnel.In>
-        {/* eslint-disable-next-line react-hooks/static-components */}
-        <ContextBridge>{render(<ownTunnel.Out />)}</ContextBridge>
-      </parentTunnel.In>
+      <parentTunnel.In>{render(<ownTunnel.Out />)}</parentTunnel.In>
       <A11yTunnelContext.Provider value={{ tunnel: ownTunnel }}>
         {children}
       </A11yTunnelContext.Provider>

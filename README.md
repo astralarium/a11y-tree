@@ -12,7 +12,7 @@ Components declare accessible markup wherever they live in the scene graph; it t
 ## Installation
 
 ```bash
-npm i a11y-tree fiber-tunnel its-fine
+npm i a11y-tree fiber-tunnel
 ```
 
 Requires React 19.2 or later.
@@ -153,8 +153,12 @@ The tree is built on [fiber-tunnel](https://github.com/astralarium/fiber-tunnel)
   Keep elements out of components that re-render every frame, or route them through the multiplexer as memoized items.
 - A canvas hidden by `<Activity>` keeps a11y content unless
   the host bridges Activity (its-fine 2.1+ `useActivityBridge`).
-- Context from the scene tree is bridged into tunneled markup via [its-fine](https://github.com/pmndrs/its-fine),
-  so providers above an `A11yTreeElement` are visible to its children.
+- Tunneled markup reads the providers above its `A11yTreeElement` in its own React root;
+  a context change re-renders only the markup that reads it.
+  A nested root sees outer providers when its host bridges them (r3f's `<Canvas>` does;
+  otherwise wrap its content in fiber-tunnel's `ContextBridge`).
+- Tunneled markup appears by a follow-up commit, scheduled in a microtask after its element commits;
+  in tests, await `act` before reading the tree.
 
 [See examples on the documentation website](https://astralarium.github.io/a11y-tree)
 

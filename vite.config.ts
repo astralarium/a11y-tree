@@ -106,7 +106,6 @@ export default defineConfig({
           "react-dom",
           "react/jsx-runtime",
           "react/compiler-runtime",
-          "its-fine",
           "fiber-tunnel",
         ].includes(id),
     },

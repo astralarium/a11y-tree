@@ -1,5 +1,3 @@
-import { fiberTunnel } from "fiber-tunnel";
-import { FiberProvider } from "its-fine";
 import {
   Component,
   type CSSProperties,
@@ -12,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { createA11yTunnel } from "./create-a11y-tunnel";
 import { isDevEnv } from "./env";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
@@ -39,14 +38,12 @@ export interface A11yTreeProviderProps {
  * </A11yTreeProvider>
  */
 export function A11yTreeProvider({ children }: A11yTreeProviderProps) {
-  const [rootTunnel] = useState(() => fiberTunnel());
+  const [rootTunnel] = useState(() => createA11yTunnel());
 
   return (
-    <FiberProvider>
-      <A11yTunnelContext.Provider value={{ tunnel: rootTunnel }}>
-        {children}
-      </A11yTunnelContext.Provider>
-    </FiberProvider>
+    <A11yTunnelContext.Provider value={{ tunnel: rootTunnel }}>
+      {children}
+    </A11yTunnelContext.Provider>
   );
 }
 
@@ -208,8 +205,8 @@ export interface A11yTreeRendererProps {
  * errors), and a copy's unmount sets refs into the tree to `null`. To
  * show or hide the tree, toggle the renderer's className.
  *
- * Content tunneled before the renderer mounts renders in its mount
- * commit; content mounting alongside it appears one commit later.
+ * Content appears by a follow-up commit, scheduled in a microtask after
+ * its element commits.
  */
 export function A11yTreeRenderer({
   className = "sr-only",

@@ -1,5 +1,4 @@
-import { type FiberTunnel, fiberTunnel } from "fiber-tunnel";
-import { useContextBridge } from "its-fine";
+import type { FiberTunnel } from "fiber-tunnel";
 import {
   createContext,
   type Key,
@@ -13,6 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { createA11yTunnel } from "./create-a11y-tunnel";
 import { isDevEnv } from "./env";
 import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
@@ -88,7 +88,7 @@ export function A11yTreeMultiplexer({
     if (existing) return existing;
 
     const newSlot: SlotData = {
-      tunnel: fiberTunnel(),
+      tunnel: createA11yTunnel(),
       parentTunnel,
       refCount: 0,
     };
@@ -192,15 +192,11 @@ export function A11yTreeSlotGroup({
   render,
 }: A11yTreeSlotGroupProps) {
   const { tunnel: parentTunnel } = useA11yTunnel();
-  const [groupTunnel] = useState(() => fiberTunnel());
-  const ContextBridge = useContextBridge();
+  const [groupTunnel] = useState(() => createA11yTunnel());
 
   return (
     <>
-      <parentTunnel.In>
-        {/* eslint-disable-next-line react-hooks/static-components */}
-        <ContextBridge>{render(<groupTunnel.Out />)}</ContextBridge>
-      </parentTunnel.In>
+      <parentTunnel.In>{render(<groupTunnel.Out />)}</parentTunnel.In>
       <A11yTunnelContext.Provider value={{ tunnel: groupTunnel }}>
         <A11ySlotGroupContext.Provider value={groupTunnel}>
           {children}
@@ -229,7 +225,6 @@ export interface A11yTreeSlotProps {
 export function A11yTreeSlot({ id, render }: A11yTreeSlotProps) {
   const ctx = useContext(A11yTreeMultiplexerContext);
   const groupTunnel = useContext(A11ySlotGroupContext);
-  const ContextBridge = useContextBridge();
   const slot = useSyncExternalStore(
     (onChange) => ctx?.subscribeSlot(id, onChange) ?? noop,
     () => ctx?.getHeldSlot(id),
@@ -243,12 +238,7 @@ export function A11yTreeSlot({ id, render }: A11yTreeSlotProps) {
   // the parent tunnel captured at slot creation.
   const parentTunnel = groupTunnel ?? slot.parentTunnel;
 
-  return (
-    <parentTunnel.In>
-      {/* eslint-disable-next-line react-hooks/static-components */}
-      <ContextBridge>{render(<slot.tunnel.Out />)}</ContextBridge>
-    </parentTunnel.In>
-  );
+  return <parentTunnel.In>{render(<slot.tunnel.Out />)}</parentTunnel.In>;
 }
 
 export interface A11yTreeSlotInProps {
