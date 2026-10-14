@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -60,15 +59,6 @@ export interface A11yTreeMultiplexerProps {
   items: A11yTreeMultiplexerItem[];
   /** Slot structure (A11yTreeSlot, A11yTreeSlotGroup). */
   children: ReactNode;
-}
-
-/**
- * Item identity, used both as the SlotIn React key and in the order
- * fingerprint so the fingerprint changes exactly when React moves a
- * child. Matches React's key coercion.
- */
-function itemKey(item: A11yTreeMultiplexerItem, index: number): string {
-  return String(item.key ?? index);
 }
 
 /**
@@ -146,16 +136,6 @@ export function A11yTreeMultiplexer({
     };
   }
 
-  // Keyed reorders of memoized items never re-render the moved Ins, so
-  // refresh slot tunnels when key order changes. Any other items change
-  // updates the tunnels via the affected Ins.
-  const itemOrderFingerprint = JSON.stringify(items.map(itemKey));
-  useLayoutEffect(() => {
-    for (const slot of slotsRef.current.values()) {
-      slot.tunnel.refresh();
-    }
-  }, [itemOrderFingerprint]);
-
   // Drop slots at refCount 0. Passive: child SlotIn acquire effects run
   // first, so every committed slot is held by now.
   useEffect(() => {
@@ -176,7 +156,7 @@ export function A11yTreeMultiplexer({
     >
       {children}
       {items.map((item, idx) => (
-        <A11yTreeSlotIn key={itemKey(item, idx)} slotId={item.slotId}>
+        <A11yTreeSlotIn key={item.key ?? idx} slotId={item.slotId}>
           {item.render}
         </A11yTreeSlotIn>
       ))}

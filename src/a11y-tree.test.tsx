@@ -1862,8 +1862,7 @@ describe("A11yTreeMultiplexer memoized reorder", () => {
   });
 
   test("swapping a keyed item's memoized render node updates the slot", async () => {
-    // Key order is unchanged, so the multiplexer does not refresh; the
-    // swapped element must propagate through the tunnels on its own.
+    // Same key, same position: only the render element changes.
     function TestComponent({ label }: { label: string }) {
       return (
         <TestProvider>
