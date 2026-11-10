@@ -17,8 +17,7 @@ export interface A11yTreeElementProps {
  *
  * Updates whenever its parent re-renders, and each update re-derives
  * order by walking the React tree. Keep elements out of components that
- * re-render every frame, or route them through A11yTreeMultiplexer as
- * memoized items.
+ * re-render every frame, or render them as `A11yTreeMirror` nodes.
  */
 export function A11yTreeElement({ children }: A11yTreeElementProps) {
   const { tunnel: parentTunnel } = useA11yTunnel();

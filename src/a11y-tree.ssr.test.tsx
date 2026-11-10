@@ -9,6 +9,9 @@ import {
   A11yTreeRenderer,
 } from "./a11y-tree-context";
 import { A11yTreeElement } from "./a11y-tree-element";
+import { A11yTreeMirror, A11yTreeMirrorIn } from "./a11y-tree-mirror";
+import { A11yTreeOutlet } from "./a11y-tree-outlet";
+import { createOutlet } from "./mirror-store";
 
 describe("SSR", () => {
   test("renders the tree container without layout effect warnings", () => {
@@ -40,5 +43,32 @@ describe("SSR", () => {
       </A11yTreeFallbackRenderer>,
     );
     expect(html).toContain("fallback");
+  });
+
+  test("the server renders a mirror scene with an empty tree and no errors", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const outlet = createOutlet();
+
+    const html = renderToString(
+      <A11yTreeProvider>
+        <A11yTreeMirror
+          lists={[{ id: "hand", outlet, nodes: [{ key: "ace", props: {} }] }]}
+        >
+          <A11yTreeOutlet outlet={outlet} />
+          <A11yTreeMirrorIn nodeKey="ace">
+            <A11yTreeElement>
+              <button>Ace</button>
+            </A11yTreeElement>
+          </A11yTreeMirrorIn>
+        </A11yTreeMirror>
+        <A11yTreeRenderer className="sr-only" />
+      </A11yTreeProvider>,
+    );
+
+    expect(html).toBe('<div class="sr-only"></div>');
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

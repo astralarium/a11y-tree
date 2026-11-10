@@ -90,7 +90,10 @@ export default defineConfig({
   plugins: [
     react(),
     babel({ presets: [reactCompilerPreset()] }),
-    dts({ tsconfigPath: "./tsconfig.app.json", exclude: ["**/*.test.*"] }),
+    dts({
+      tsconfigPath: "./tsconfig.app.json",
+      exclude: ["**/*.test.*", "src/test/**"],
+    }),
   ],
   build: {
     outDir: "dist",

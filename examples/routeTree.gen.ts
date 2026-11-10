@@ -13,6 +13,7 @@ import { Route as ExampleRouteImport } from './routes/example'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ExampleIndexRouteImport } from './routes/example/index'
+import { Route as ExampleListsRouteImport } from './routes/example/lists'
 import { Route as ExampleFocusRouteImport } from './routes/example/focus'
 import { Route as ExampleErrorBoundaryRouteImport } from './routes/example/error-boundary'
 
@@ -36,6 +37,11 @@ const ExampleIndexRoute = ExampleIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ExampleRoute,
 } as any)
+const ExampleListsRoute = ExampleListsRouteImport.update({
+  id: '/lists',
+  path: '/lists',
+  getParentRoute: () => ExampleRoute,
+} as any)
 const ExampleFocusRoute = ExampleFocusRouteImport.update({
   id: '/focus',
   path: '/focus',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/example': typeof ExampleRouteWithChildren
   '/example/error-boundary': typeof ExampleErrorBoundaryRoute
   '/example/focus': typeof ExampleFocusRoute
+  '/example/lists': typeof ExampleListsRoute
   '/example/': typeof ExampleIndexRoute
 }
 export interface FileRoutesByTo {
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsRoute
   '/example/error-boundary': typeof ExampleErrorBoundaryRoute
   '/example/focus': typeof ExampleFocusRoute
+  '/example/lists': typeof ExampleListsRoute
   '/example': typeof ExampleIndexRoute
 }
 export interface FileRoutesById {
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/example': typeof ExampleRouteWithChildren
   '/example/error-boundary': typeof ExampleErrorBoundaryRoute
   '/example/focus': typeof ExampleFocusRoute
+  '/example/lists': typeof ExampleListsRoute
   '/example/': typeof ExampleIndexRoute
 }
 export interface FileRouteTypes {
@@ -79,9 +88,16 @@ export interface FileRouteTypes {
     | '/example'
     | '/example/error-boundary'
     | '/example/focus'
+    | '/example/lists'
     | '/example/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/docs' | '/example/error-boundary' | '/example/focus' | '/example'
+  to:
+    | '/'
+    | '/docs'
+    | '/example/error-boundary'
+    | '/example/focus'
+    | '/example/lists'
+    | '/example'
   id:
     | '__root__'
     | '/'
@@ -89,6 +105,7 @@ export interface FileRouteTypes {
     | '/example'
     | '/example/error-boundary'
     | '/example/focus'
+    | '/example/lists'
     | '/example/'
   fileRoutesById: FileRoutesById
 }
@@ -128,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExampleIndexRouteImport
       parentRoute: typeof ExampleRoute
     }
+    '/example/lists': {
+      id: '/example/lists'
+      path: '/lists'
+      fullPath: '/example/lists'
+      preLoaderRoute: typeof ExampleListsRouteImport
+      parentRoute: typeof ExampleRoute
+    }
     '/example/focus': {
       id: '/example/focus'
       path: '/focus'
@@ -148,12 +172,14 @@ declare module '@tanstack/react-router' {
 interface ExampleRouteChildren {
   ExampleErrorBoundaryRoute: typeof ExampleErrorBoundaryRoute
   ExampleFocusRoute: typeof ExampleFocusRoute
+  ExampleListsRoute: typeof ExampleListsRoute
   ExampleIndexRoute: typeof ExampleIndexRoute
 }
 
 const ExampleRouteChildren: ExampleRouteChildren = {
   ExampleErrorBoundaryRoute: ExampleErrorBoundaryRoute,
   ExampleFocusRoute: ExampleFocusRoute,
+  ExampleListsRoute: ExampleListsRoute,
   ExampleIndexRoute: ExampleIndexRoute,
 }
 

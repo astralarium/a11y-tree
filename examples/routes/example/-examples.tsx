@@ -11,6 +11,11 @@ export const EXAMPLES: readonly ExampleMeta[] = [
     description: "Pointer and keyboard focus through the a11y tree",
   },
   {
+    label: "Keyed lists",
+    to: "/example/lists",
+    description: "Cards move within and between lists; focus stays on the card",
+  },
+  {
     label: "Error boundary",
     to: "/example/error-boundary",
     description: "Errors in the a11y tree surface in a dismissable dialog",

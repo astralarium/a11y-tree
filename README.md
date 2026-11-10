@@ -65,61 +65,41 @@ The a11y tree mirrors the scene hierarchy:
 </div>
 ```
 
-### Multiplexing
+### Keyed lists
 
-For performance-sensitive scenes: route memoized items into slots as data.
+For lists whose items move: nodes keep their state, DOM node and focus across reorders and moves between lists.
 
-- [`<A11yTreeMultiplexer>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMultiplexer.html):
-  Routes items into slots.
+- [`<A11yTreeMirror>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMirror.html):
+  Renders ordered lists of keyed nodes.
 
-- [`<A11yTreeSlot>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlot.html):
-  A slot in the tree structure.
+- [`<A11yTreeOutlet>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeOutlet.html):
+  A list's place in the tree, from `useA11yTreeOutlet`.
 
-- [`<A11yTreeSlotGroup>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeSlotGroup.html):
-  Groups slots under a shared wrapper.
+- [`<A11yTreeMirrorIn>`](https://astralarium.github.io/a11y-tree/docs/functions/A11yTreeMirrorIn.html):
+  Routes scene content into a node.
 
 ```tsx
-const items = useMemo(
-  () =>
-    cards.map((card) => ({
-      key: card.id,
-      slotId: card.zone, // "hand" | "board"
-      render: (
-        <A11yTreeElement>
-          <div role="option">{card.name}</div>
-        </A11yTreeElement>
-      ),
-    })),
-  [cards],
-);
+const renderHand = (List) => <List as="ul" aria-label="Hand" />;
 
-<A11yTreeMultiplexer items={items}>
-  <A11yTreeSlotGroup
-    render={(content) => (
-      <div role="region" aria-label="Battlefield">
-        {content}
-      </div>
-    )}
-  >
-    <A11yTreeSlot
-      id="hand"
-      render={(content) => (
-        <div role="listbox" aria-label="Hand">
-          {content}
-        </div>
-      )}
-    />
-    <A11yTreeSlot
-      id="board"
-      render={(content) => (
-        <div role="listbox" aria-label="Board">
-          {content}
-        </div>
-      )}
-    />
-  </A11yTreeSlotGroup>
-</A11yTreeMultiplexer>;
+const hand = useA11yTreeOutlet();
+const nodes = cards.map((card) => ({ key: card.id, props: card }));
+
+<A11yTreeMirror
+  lists={[{ id: "hand", outlet: hand, nodes, render: renderHand }]}
+  nodeElement="li"
+>
+  <A11yTreeOutlet outlet={hand} />
+  {cards.map((card) => (
+    <A11yTreeMirrorIn key={card.id} nodeKey={card.id}>
+      <Card3D card={card} />
+    </A11yTreeMirrorIn>
+  ))}
+</A11yTreeMirror>;
 ```
+
+- Lists follow their outlet's visibility and tree order.
+- React events from a node bubble to the mirror, skipping its list: handle them in `renderNode`, or add native listeners to the list.
+- Keep `render` and `renderNode` stable to avoid re-renders.
 
 ### Error handling
 
