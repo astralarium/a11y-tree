@@ -93,6 +93,7 @@ export default defineConfig({
     dts({
       tsconfigPath: "./tsconfig.app.json",
       exclude: ["**/*.test.*", "src/test/**"],
+      bundleTypes: true,
     }),
   ],
   build: {
