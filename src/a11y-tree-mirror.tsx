@@ -33,16 +33,15 @@ import { A11yTunnelContext, useA11yTunnel } from "./use-a11y-tunnel";
 
 /** One node of a mirror list. */
 export interface A11yTreeMirrorNode<P> {
-  /** Unique across the mirror; the node keeps its state, DOM node and
-   * focus while its key stays in some list. */
+  /** Unique across the mirror. The node keeps state, DOM and focus while
+   * its key is in any list. */
   key: string;
-  /** Passed to `renderNode`. Shallow-equal props keep the node from
-   * re-rendering. */
+  /** Passed to `renderNode`; shallow-equal props skip re-render. */
   props: P;
 }
 
-/** Props of a list's element. Its children are the list's nodes; other
- * children are dropped, so `render` props that pass children compose. */
+/** Props of a list's element. Its children are the list's nodes; passed
+ * children are dropped. */
 export interface A11yTreeMirrorListElementProps extends Omit<
   HTMLAttributes<HTMLElement>,
   "children" | "dangerouslySetInnerHTML"
@@ -61,7 +60,6 @@ export interface A11yTreeMirrorList<P> {
   id: string;
   /** Where the list renders; from {@link useA11yTreeOutlet}. */
   outlet: A11yTreeOutletHandle;
-  /** In order. */
   nodes: readonly A11yTreeMirrorNode<P>[];
   /** Renders the list around its element, e.g.
    * `(List) => <List as="ul" aria-label="Hand" />`. Default: a
@@ -81,12 +79,11 @@ export interface A11yTreeMirrorProps<P> {
    * `(content, props) => <div role="option">{content}</div>`.
    * Default: content. */
   renderNode?: A11yTreeMirrorRenderNode<P>;
-  /** Each node's element: the list element's child, e.g. `"li"` in a
-   * `ul`. Default: a `display: contents` div. Read when a node first
-   * renders. */
+  /** Tag of each node's element, e.g. `"li"` in a `ul`. Default: a
+   * `display: contents` div. Read once per node. */
   nodeElement?: keyof HTMLElementTagNameMap;
-  /** Fixed attributes of each node's element, e.g. `{ role: "none" }`.
-   * Read when a node first renders. */
+  /** Attributes of each node's element, e.g. `{ role: "none" }`. Read
+   * once per node. */
   nodeAttributes?: Readonly<Record<string, string>>;
   /** Scene content; holds the `A11yTreeMirrorIn`s. */
   children?: ReactNode;
@@ -97,15 +94,12 @@ const MirrorContext = createContext<MirrorStore<unknown> | null>(null);
 /**
  * Mirrors ordered lists of keyed nodes into the a11y tree.
  *
- * Each list renders at its `A11yTreeOutlet`, in the outlet's tree order.
- * Nodes keep their React state, DOM node and focus across reorders and
- * moves between lists. Lists below an `A11yTreeContainer` render in its
- * wrapper.
+ * Each list renders at its `A11yTreeOutlet`. Nodes keep React state, DOM
+ * and focus across reorders and moves between lists.
  *
- * Nodes read context as children of their list's element; a context
- * the list lacks reads at the mirror. Native events bubble through the
- * list's DOM; React events bubble from the mirror's place in the tree,
- * past lists.
+ * Nodes read context at their list's element, then at the mirror. Native
+ * events bubble through the list's DOM; React events bubble from the
+ * mirror.
  *
  * @example
  * <A11yTreeMirror
@@ -167,8 +161,7 @@ export function A11yTreeMirrorIn({ nodeKey, children }: A11yTreeMirrorInProps) {
 
 const noAttributes: Readonly<Record<string, string>> = {};
 
-/** List `id`'s element component: it captures the providers above it
- * for the list's nodes. */
+/** List `id`'s element component; captures its providers for the nodes. */
 function listElement<P>(store: MirrorStore<P>, id: string) {
   return function List(props: A11yTreeMirrorListElementProps) {
     return (
@@ -181,8 +174,7 @@ function listElement<P>(store: MirrorStore<P>, id: string) {
   };
 }
 
-/** The list's element; the store places node elements as its
- * children. */
+/** The list's element; the store places node elements in it. */
 function ListElement<P>({
   store,
   id,
@@ -200,7 +192,7 @@ function ListElement<P>({
     (element: HTMLElement) => store.attach(id, element, bridge),
     [store, id, bridge],
   );
-  // Apart from `attach`: a new `ref` identity leaves the list attached.
+  // Separate from `attach`: a new `ref` identity keeps the list attached.
   useLayoutEffect(
     () => assignRef(ref, store.elementOf(id)),
     [store, id, ref, as],
@@ -244,8 +236,7 @@ interface NodeViewProps {
   renderNode: (content: ReactNode, props: unknown) => ReactNode;
 }
 
-/** One node, portaled into its host. Its own boundary keeps a
- * suspending node from hiding the others. */
+/** One node, portaled into its host, in its own Suspense boundary. */
 const NodeView = memo(function NodeView({
   shape,
   node,

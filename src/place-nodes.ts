@@ -92,8 +92,7 @@ function moveHost(
       parent.moveBefore(host, before);
       return;
     } catch {
-      // Detached nodes and moves across documents or shadow roots fall
-      // back to insertBefore.
+      // Throws for detached nodes and cross-document/shadow-root moves.
     }
   }
   const active = host.ownerDocument.activeElement;

@@ -21,18 +21,16 @@ export interface A11yTreeProviderProps {
 /**
  * Accessibility tree for canvas-based UIs.
  *
- * Wrap canvas in `A11yTreeProvider` and add `A11yTreeRenderer`
- * to the canvas fallback.
+ * Wrap the canvas in `A11yTreeProvider`; put `A11yTreeRenderer` in its
+ * fallback.
  *
- * Wrap each nested React root holding a11y content (e.g. an r3f
- * `<Canvas>`) in fiber-tunnel's `FiberAnchor`, so its content reads at
- * the root's place. Unanchored roots have no defined order (dev warns).
+ * Wrap each nested React root (e.g. r3f `<Canvas>`) in fiber-tunnel's
+ * `FiberAnchor` to order its content at the root's place; unanchored
+ * roots are unordered (dev warns). For hosts that skip context bridging,
+ * give `FiberAnchor` a function child and wrap the root's content in
+ * `ContextBridge` with its bridge.
  *
- * A nested root sees outer providers when its host bridges them (r3f's
- * `<Canvas>` does); otherwise pass `FiberAnchor` a function child and
- * wrap the root's content in `ContextBridge` with the bridge it receives.
- *
- * A canvas hidden by `<Activity>` keeps its a11y content unless the host
+ * An `<Activity>`-hidden canvas keeps its a11y content unless the host
  * bridges Activity (its-fine 2.1+ `useActivityBridge`).
  *
  * @example
@@ -86,16 +84,12 @@ const errorDialogStyle: CSSProperties = {
 export interface A11yTreeFallbackRendererProps {
   /** Fallback UI. */
   children: ReactNode;
-  /** Portal children to `document.body`, out of the (possibly
-   * visually hidden) tree container. Renders in place during SSR. */
+  /** Portals children to `document.body`, out of the hidden tree
+   * container. In place during SSR. */
   portal?: boolean;
 }
 
-/**
- * Renders fallback UI for the a11y tree. With `portal`, content
- * escapes the tree container, where in-place content is never painted;
- * the built-in error dialog uses this.
- */
+/** Renders fallback UI for the a11y tree. */
 export function A11yTreeFallbackRenderer({
   children,
   portal = false,
@@ -164,12 +158,8 @@ class TunnelErrorBoundary extends Component<
   }
 }
 
-/**
- * Dev-only: warns when the tree container renders visibly with the
- * default `"sr-only"` className, i.e. no visually-hidden CSS rule
- * backs it. Custom classNames are trusted. No-op in production and
- * where ResizeObserver is absent.
- */
+/** Dev: warns when the default `"sr-only"` container is visible, i.e. no
+ * CSS rule hides it. */
 function useHiddenContainerWarning(
   ref: RefObject<HTMLDivElement | null>,
   className: string,
@@ -196,24 +186,20 @@ function useHiddenContainerWarning(
 
 export interface A11yTreeRendererProps {
   className?: string;
-  /**
-   * Custom error UI replacing the built-in dialog. Renders in place of
-   * the tree container (which may be visually hidden); wrap in
-   * `A11yTreeFallbackRenderer` with `portal` if the error should be
-   * visible.
-   */
+  /** Error UI replacing the built-in dialog. Renders in place, where it
+   * may be hidden; wrap in `A11yTreeFallbackRenderer` with `portal` to
+   * show it. */
   fallback?: (props: A11yTreeErrorFallbackProps) => ReactNode;
 }
 
 /**
  * Renders the a11y tree into the DOM, visually hidden by default.
  *
- * Mount one per tree: each extra renderer renders its own copy (dev
- * errors), and a copy's unmount sets refs into the tree to `null`. To
- * show or hide the tree, toggle the renderer's className.
+ * Mount one per tree; each extra renderer duplicates the content and
+ * nulls its refs on unmount (dev errors). Toggle `className` to show or
+ * hide the tree.
  *
- * Content appears by a follow-up commit, scheduled in a microtask after
- * its element commits; in tests, await `act` before reading the tree.
+ * Content commits a microtask after its element; tests await `act`.
  */
 export function A11yTreeRenderer({
   className = "sr-only",

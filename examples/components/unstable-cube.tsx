@@ -9,12 +9,9 @@ interface UnstableCubeProps {
 }
 
 /**
- * Cube whose a11y tree element throws during render when activated.
- *
- * Clicking the cube (or its button in the a11y tree) crashes the
- * tree, demonstrating the error boundary's breakout dialog. The
- * crashed state lives in the tunneled button, so dismissing the
- * dialog remounts it fresh and the tree recovers.
+ * Cube whose a11y tree button throws on activation, showing the error
+ * dialog. Crash state lives in the tunneled button, so dismissing the
+ * dialog remounts it fresh.
  */
 export function UnstableCube({
   label,

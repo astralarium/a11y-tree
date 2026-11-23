@@ -9,15 +9,11 @@ export interface A11yTreeElementProps {
 }
 
 /**
- * Tunnels children into the a11y tree.
+ * Tunnels children into the a11y tree, in React tree order. Children read
+ * the providers above this element.
  *
- * Content orders by React tree position, so the a11y tree follows scene
- * order. Content reads the providers above this element; a context
- * change re-renders only the markup that reads it.
- *
- * Updates whenever its parent re-renders, and each update re-derives
- * order by walking the React tree. Keep elements out of components that
- * re-render every frame, or render them as `A11yTreeMirror` nodes.
+ * Each parent re-render re-derives order by walking the React tree; keep
+ * it out of per-frame renders, or use `A11yTreeMirror`.
  */
 export function A11yTreeElement({ children }: A11yTreeElementProps) {
   const { tunnel: parentTunnel } = useA11yTunnel();
@@ -26,14 +22,14 @@ export function A11yTreeElement({ children }: A11yTreeElementProps) {
 }
 
 export interface A11yTreeContainerProps {
-  /** Canvas children that may contain nested a11y elements to be wrapped. */
+  /** Scene content holding nested a11y elements. */
   children: ReactNode;
-  /** Wraps the subtree content, e.g. `(content) => <div role="group">{content}</div>`.
+  /** Wraps the a11y content, e.g. `(content) => <div role="group">{content}</div>`.
    * Place `content` once. */
   render: (content: ReactNode) => ReactNode;
 }
 
-/** Container that wraps the a11y subtree. */
+/** Wraps its children's a11y content in `render`. */
 export function A11yTreeContainer({
   children,
   render,

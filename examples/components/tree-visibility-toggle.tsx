@@ -37,20 +37,17 @@ interface TreePanelProps {
 }
 
 /**
- * Non-modal panel showing the a11y tree visually. Escape closes it.
+ * Non-modal panel showing the a11y tree. Escape closes it.
  *
- * Must be rendered inside an A11yTreeProvider. The single renderer
- * stays mounted at a stable tree position (so refs into the tree stay
- * valid) and only toggles className: open shows the panel, closed
- * collapses to the bare screen-reader-only tree with no landmark,
- * heading, or off-screen content in the tab order.
+ * Holds the single renderer at a stable position, so refs into the tree
+ * stay valid; open and closed differ only in className.
  */
 export function TreePanel({ open, onOpenChange }: TreePanelProps) {
   const headingId = useId();
   const descriptionId = useId();
 
-  // Document-level so Escape works wherever focus is (e.g. still on
-  // the toggle button). Widgets that consume Escape preventDefault.
+  // Document-level: Escape works from any focus. Widgets that consume
+  // Escape preventDefault.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -73,7 +70,7 @@ export function TreePanel({ open, onOpenChange }: TreePanelProps) {
       )}
     >
       {open && (
-        // pt-24 clears the page header so the title sits below the toggle/source controls
+        // pt-24 clears the header controls
         <div className="flex flex-col gap-0.5 p-4 pt-24">
           <h2 id={headingId} className="text-foreground text-base font-medium">
             A11y tree
@@ -84,8 +81,8 @@ export function TreePanel({ open, onOpenChange }: TreePanelProps) {
         </div>
       )}
       <div className={cn(open && "min-h-0 flex-1 overflow-y-auto px-4 pb-4")}>
-        {/* Closing keeps focus where it is: the focused element stays
-            focusable in the sr-only tree, preserving tab position. */}
+        {/* Closing keeps focus: the focused element stays focusable in
+            the sr-only tree. */}
         <A11yTreeRenderer className={open ? "not-sr-only" : "sr-only"} />
       </div>
     </div>

@@ -74,17 +74,16 @@ export interface NodeRecord<P> {
   readonly props: P;
   /** Null until its list first mounts. */
   readonly list: ListHostRecord | null;
-  /** The id of the list `list` belongs to. */
+  /** Id of the list owning `list`. */
   readonly listId: string | null;
-  /** The node's element; portal target, set with `list`. */
+  /** Portal target; set with `list`. */
   readonly host: HTMLElement | null;
-  /** Renders the node's `A11yTreeMirrorIn` content at its Out. */
   readonly tunnel: NodeTunnel;
 }
 
 /** What the node pool renders. */
 export interface PoolSnapshot<P> {
-  /** Fixed per key: keys append on entry. */
+  /** Stable order; new keys append. */
   readonly keys: readonly string[];
   readonly nodes: ReadonlyMap<string, NodeRecord<P>>;
   readonly renderNode: A11yTreeMirrorRenderNode<P>;
@@ -146,7 +145,7 @@ export class MirrorStore<P> {
   private listeners = new Set<() => void>();
   /** Mounted list elements by list id. */
   private attached = new Map<string, ListHostRecord>();
-  /** Last element per list id: one shown again keeps its record. */
+  /** Last element per list id; reused when the list shows again. */
   private known = new Map<string, ListHostRecord>();
   private outlets = new Map<Outlet, OutletContent>();
   private contents = new Map<string, OutletContent>();
@@ -154,7 +153,7 @@ export class MirrorStore<P> {
   private hosts = new Map<string, HTMLElement>();
   private tunnels = new Map<string, NodeTunnel>();
   private warned = new Set<string>();
-  /** Every list's contexts: a node keeps its mount across lists. */
+  /** Shared by all lists, so nodes keep their mount across lists. */
   readonly shape = createContextBridgeShape();
   private listElement: ListElementFactory<P>;
 
@@ -169,7 +168,7 @@ export class MirrorStore<P> {
 
   getSnapshot = () => this.snapshot;
 
-  /** Takes new lists: outlets render their wrappers, nodes follow. */
+  /** Applies new lists to outlets and nodes. */
   publish(
     lists: readonly A11yTreeMirrorList<P>[],
     renderNode: A11yTreeMirrorRenderNode<P>,
@@ -273,8 +272,8 @@ export class MirrorStore<P> {
     };
   }
 
-  /** The element list `id`'s nodes render in: its mounted element, else
-   * its last one while hidden in place. */
+  /** List `id`'s mounted element, else its last one while hidden in
+   * place. */
   private targetOf(id: string) {
     const known = this.known.get(id);
     return (
@@ -284,8 +283,7 @@ export class MirrorStore<P> {
     );
   }
 
-  /** Drops elements of removed nodes and of departed, unmounted lists;
-   * orders each list's node elements. */
+  /** Removes stale node and list elements; orders each list's nodes. */
   private place(placements: ReadonlyMap<ListHostRecord, HTMLElement[]>) {
     const { nodes } = this.snapshot;
     for (const [key, host] of this.hosts) {
@@ -300,15 +298,14 @@ export class MirrorStore<P> {
     for (const [list, hosts] of placements) placeNodes(list.element, hosts);
   }
 
-  /** Recomputes node records and places their hosts; notifies on
-   * change. A node whose list has no element stays in the element of
-   * its last list. */
+  /** Recomputes node records and places hosts. A node whose list has no
+   * element stays in its last list's element. */
   private update() {
     const previous = this.snapshot;
     const nodes = new Map<string, NodeRecord<P>>();
     const owners = new Map<string, string>();
-    /** Node elements by list element, in order; nodes waiting in another
-     * list's element join it when they are elsewhere. */
+    /** Hosts to order, by list element. A waiting node joins only when
+     * outside its last list's element. */
     const placements = new Map<ListHostRecord, HTMLElement[]>();
     const placed = (list: ListHostRecord) => {
       let hosts = placements.get(list);
@@ -373,8 +370,8 @@ export class MirrorStore<P> {
     for (const onChange of this.listeners) onChange();
   }
 
-  /** Drops node `key`'s tunnel once no list or `A11yTreeMirrorIn` holds
-   * it; a StrictMode replay's `hold` restores it. */
+  /** Drops node `key`'s tunnel once unheld and out of the lists; a
+   * StrictMode replay's `hold` restores it. */
   private drop(key: string) {
     const entry = this.tunnels.get(key);
     if (entry?.holders === 0 && !this.snapshot.nodes.has(key)) {

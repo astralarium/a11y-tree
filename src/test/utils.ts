@@ -1,4 +1,3 @@
-// Test helpers shared by the suites.
 import { act, render, type RenderResult } from "@testing-library/react";
 import type { ReactNode } from "react";
 

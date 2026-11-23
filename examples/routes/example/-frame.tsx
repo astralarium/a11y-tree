@@ -6,7 +6,7 @@ interface FrameProps {
   title: string;
   subtitle?: string;
   sourceUrl?: string;
-  /** Extra controls rendered in the header, e.g. the a11y tree visibility toggle. */
+  /** Header controls, e.g. the a11y tree toggle. */
   controls?: ReactNode;
 }
 

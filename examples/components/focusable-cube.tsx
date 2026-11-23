@@ -9,11 +9,8 @@ interface FocusableCubeProps {
 }
 
 /**
- * Cube wired for pointer and keyboard interaction.
- *
- * Hovering focuses its element in the a11y tree;
- * focus (pointer or Tab) highlights the cube.
- * Clicking the cube or its tree button increments a counter.
+ * Cube with pointer and keyboard interaction: hover focuses its a11y
+ * element, focus highlights the cube, clicks increment a counter.
  */
 export function FocusableCube({
   label,
